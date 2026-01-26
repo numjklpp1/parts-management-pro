@@ -32,9 +32,15 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
   });
 
   const DISPLAY_ORDER = ['完成', '框_完成', '框', '玻璃膠條', '玻璃條', '玻璃'];
-
-  // 定義不需要區分左右邊的組別
   const BASE_MODEL_SPECS = ['玻璃', '玻璃條', '玻璃膠條'];
+
+  // 生成較易讀的 ID：類別-年月日-隨機字元
+  const generateReadableId = (category: string) => {
+    const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const catCode = category.substring(0, 1);
+    return `${catCode}-${date}-${random}`;
+  };
 
   const availableModels = useMemo(() => {
     if (!isGlassDoor) return [];
@@ -59,7 +65,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
       .reduce((acc, r) => acc + r.quantity, 0);
   };
 
-  // Fixed Error: Explicitly typing useMemo to avoid unknown values in Object.entries later
   const fullStockSummary = useMemo<Record<string, Record<string, number>>>(() => {
     if (!isGlassDoor) return {};
     const summary: Record<string, Record<string, number>> = {};
@@ -96,47 +101,30 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
     }));
   }, [preselectedCategory, isGlassDoor]);
 
-  // 智慧維持型號選取
   useEffect(() => {
     if (isGlassDoor && availableModels.length > 0) {
       const currentName = formData.name;
-      
-      // 1. 如果目前的型號已經在可用清單中，直接保留
-      if (availableModels.includes(currentName)) {
-        return;
-      }
+      if (availableModels.includes(currentName)) return;
 
-      // 2. 嘗試智慧映射 (Fuzzy Match)
       let bestMatch = '';
       const isNewSpecBase = BASE_MODEL_SPECS.includes(formData.specification);
       
       if (isNewSpecBase) {
-        // 從「區分左右」切換到「基礎型號」：去掉尾綴
         const base = currentName.replace(/-[LR]$/, '');
-        if (availableModels.includes(base)) {
-          bestMatch = base;
-        }
+        if (availableModels.includes(base)) bestMatch = base;
       } else {
-        // 從「基礎型號」切換到「區分左右」：嘗試補上 -L
         const withL = currentName + '-L';
         const withR = currentName + '-R';
-        if (availableModels.includes(withL)) {
-          bestMatch = withL;
-        } else if (availableModels.includes(withR)) {
-          bestMatch = withR;
-        } else {
-          // 如果都沒對到，找看看有沒有開頭一樣的
+        if (availableModels.includes(withL)) bestMatch = withL;
+        else if (availableModels.includes(withR)) bestMatch = withR;
+        else {
           const prefixMatch = availableModels.find(m => m.startsWith(currentName));
           if (prefixMatch) bestMatch = prefixMatch;
         }
       }
 
-      if (bestMatch) {
-        setFormData(prev => ({ ...prev, name: bestMatch }));
-      } else {
-        // 萬一真的完全對不上，才跳回清單第一個
-        setFormData(prev => ({ ...prev, name: availableModels[0] }));
-      }
+      if (bestMatch) setFormData(prev => ({ ...prev, name: bestMatch }));
+      else setFormData(prev => ({ ...prev, name: availableModels[0] }));
     }
   }, [formData.specification, availableModels, isGlassDoor]);
 
@@ -172,13 +160,13 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
 
         if (delta !== 0) {
           recordsToSubmit.push({
-            id: crypto.randomUUID(),
+            id: generateReadableId(PartCategory.GlassSlidingDoor),
             timestamp,
             category: PartCategory.GlassSlidingDoor,
             name: model,
             specification: spec,
             quantity: delta,
-            note: `[批次調整模式] 原:${oldValue} -> 新:${newValue}`
+            note: `[批次調整] 原:${oldValue} -> 新:${newValue}`
           });
         }
       });
@@ -218,33 +206,31 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
       const mainRecord: PartRecord = {
         ...formData,
         quantity: numQty,
-        id: crypto.randomUUID(),
+        id: generateReadableId(formData.category),
         timestamp,
         note: isAdjustmentMode ? `[手動調整] ${formData.note}`.trim() : formData.note
       };
       recordsToSubmit.push(mainRecord);
 
       if (!isAdjustmentMode && isGlassDoor && numQty > 0) {
-        // 考慮到 玻璃條 與 玻璃膠條 可能在邏輯中通用
         if (formData.specification === '玻璃膠條' || formData.specification === '玻璃條') {
-          recordsToSubmit.push({ id: crypto.randomUUID(), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '玻璃', quantity: -numQty, note: `連動扣除 (隨 ${formData.specification} 新增)` });
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '玻璃', quantity: -numQty, note: `連動扣除 (隨 ${formData.specification} 新增)` });
         } else if (formData.specification === '框_完成') {
-          recordsToSubmit.push({ id: crypto.randomUUID(), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框', quantity: -numQty, note: `連動扣除 (隨 框_完成 新增)` });
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框', quantity: -numQty, note: `連動扣除 (隨 框_完成 新增)` });
         } else if (formData.specification === '完成') {
           const N = numQty;
           const stockFrameFinished = getCurrentStock('框_完成', formData.name);
           const deductFromFrameFinished = Math.min(stockFrameFinished, N);
           const remainingFrameNeed = N - deductFromFrameFinished;
-          if (deductFromFrameFinished > 0) recordsToSubmit.push({ id: crypto.randomUUID(), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框_完成', quantity: -deductFromFrameFinished, note: `完成品扣除 (優先項)` });
-          if (remainingFrameNeed > 0) recordsToSubmit.push({ id: crypto.randomUUID(), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框', quantity: -remainingFrameNeed, note: `完成品扣除 (次要項)` });
+          if (deductFromFrameFinished > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框_完成', quantity: -deductFromFrameFinished, note: `完成品扣除 (優先項)` });
+          if (remainingFrameNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框', quantity: -remainingFrameNeed, note: `完成品扣除 (次要項)` });
           
           const baseName = formData.name.replace(/-[LR]$/, '');
-          // 優先嘗試扣除 玻璃膠條，若無則看 玻璃條
           const stockGlassGasket = getCurrentStock('玻璃膠條', baseName);
           const deductFromGlassGasket = Math.min(stockGlassGasket, N);
           const remainingGlassNeed = N - deductFromGlassGasket;
-          if (deductFromGlassGasket > 0) recordsToSubmit.push({ id: crypto.randomUUID(), timestamp, category: PartCategory.GlassSlidingDoor, name: baseName, specification: '玻璃膠條', quantity: -deductFromGlassGasket, note: `完成品扣除 (優先項)` });
-          if (remainingGlassNeed > 0) recordsToSubmit.push({ id: crypto.randomUUID(), timestamp, category: PartCategory.GlassSlidingDoor, name: baseName, specification: '玻璃', quantity: -remainingGlassNeed, note: `完成品扣除 (次要項)` });
+          if (deductFromGlassGasket > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: baseName, specification: '玻璃膠條', quantity: -deductFromGlassGasket, note: `完成品扣除 (優先項)` });
+          if (remainingGlassNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: baseName, specification: '玻璃', quantity: -remainingGlassNeed, note: `完成品扣除 (次要項)` });
         }
       }
 
@@ -258,8 +244,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
       });
       setIsAdjustmentMode(false);
       setAiSuggestion('');
-      const successMsg = isAdjustmentMode ? '手動庫存調整已完成' : (numQty > 0 ? `${formData.category} 紀錄已儲存！` : `${formData.category} 修正紀錄已儲存！`);
-      alert(successMsg);
+      alert(isAdjustmentMode ? '手動庫存調整已完成' : '紀錄已儲存！');
     } catch (err) {
       alert('存檔失敗：' + err);
     } finally {
@@ -486,7 +471,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
                     <div 
                       key={model} 
                       className={`group flex items-center justify-between p-3 rounded-xl border transition-all ${
-                        // Fix Error on line 488: Cast qty to number for valid comparison
                         isBatchEditing ? 'border-amber-500/30 bg-amber-900/5' : ((qty as number) > 0 ? 'bg-zinc-800/80 border-zinc-700 shadow-sm' : 'bg-zinc-900/30 border-zinc-800/50 opacity-40')
                       }`}
                     >
@@ -510,7 +494,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
                             }}
                           />
                         ) : (
-                          // Fix Error on line 512: Cast qty to number for valid comparison
                           <span className={`text-xs font-black px-2 py-1 rounded-md min-w-[2.5rem] text-center ${
                             (qty as number) > 0 ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-600'
                           }`}>
