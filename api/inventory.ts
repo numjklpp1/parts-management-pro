@@ -39,7 +39,12 @@ export default async function handler(req: any, res: any) {
     });
 
     const sheets = google.sheets({ version: 'v4', auth });
-    const sheetName = 'PartInventory';
+
+    // ---------------------------------------------------------
+    // ⚠️ 重要：工作表名稱 (Tab Name)
+    // 如果您在 Google 試算表下方改了分頁名稱，請修改下面這個變數：
+    const sheetName = '門'; 
+    // ---------------------------------------------------------
 
     if (method === 'GET') {
       try {
@@ -67,8 +72,8 @@ export default async function handler(req: any, res: any) {
         if (err.status === 404) {
           throw new Error('找不到該試算表，請檢查 Spreadsheet ID 是否正確。');
         }
-        // 如果是工作表不存在，回傳空陣列
-        return res.status(200).json({ records: [] });
+        // 如果是工作表不存在，回傳錯誤訊息讓使用者知道
+        return res.status(500).json({ message: `找不到名為「${sheetName}」的分頁，請確認試算表分頁名稱是否正確。` });
       }
     } 
     
@@ -96,8 +101,7 @@ export default async function handler(req: any, res: any) {
           });
           return res.status(200).json({ message: 'Success' });
         } catch (appendErr: any) {
-          // 如果是因為工作表不存在，可以嘗試更具體的錯誤回傳
-          throw new Error(`無法寫入資料：${appendErr.message}`);
+          throw new Error(`無法寫入資料至「${sheetName}」：${appendErr.message}`);
         }
       }
       return res.status(200).json({ message: 'No record provided' });

@@ -22,7 +22,6 @@ const App: React.FC = () => {
 
     setLoading(true);
     try {
-      // 現在只需傳入 spreadsheetId，Token 由後端 Proxy 處理
       const sheetsService = new GoogleSheetsService(spreadsheetId);
       const data = await sheetsService.fetchRecords();
       setRecords(data);
@@ -46,21 +45,18 @@ const App: React.FC = () => {
   const handleAddRecords = async (newRecords: PartRecord | PartRecord[]) => {
     const recordsArray = Array.isArray(newRecords) ? newRecords : [newRecords];
     
-    // 樂觀更新 UI
     const oldRecords = [...records];
     setRecords(prev => [...prev, ...recordsArray]);
 
     if (spreadsheetId) {
       try {
         const sheetsService = new GoogleSheetsService(spreadsheetId);
-        // 透過 Proxy 寫入
         for (const record of recordsArray) {
           await sheetsService.addRecord(record);
         }
       } catch (err: any) {
         console.error('Failed to sync via proxy:', err);
         alert('同步失敗：' + err.message);
-        // 若失敗則回滾
         setRecords(oldRecords);
       }
     }
@@ -138,19 +134,28 @@ const App: React.FC = () => {
               <h3 className="text-xl font-bold mb-6 text-white flex items-center gap-2">
                 <span className="text-green-500">☁️</span> 自動化同步設定
               </h3>
-              <div className="space-y-4">
-                <div className="bg-blue-900/10 border border-blue-800/30 p-4 rounded-xl mb-4 text-xs text-blue-200">
-                  <p className="font-bold mb-1">💡 系統說明：</p>
-                  <p>本系統已升級為服務帳戶同步。您只需將試算表共用給您的服務帳戶 Email，並在此填入試算表 ID 即可自動運作，不再需要手動輸入 Access Token。</p>
+              
+              <div className="space-y-6">
+                <div className="bg-blue-900/10 border border-blue-800/30 p-5 rounded-xl text-xs text-blue-200 space-y-3">
+                  <p className="font-bold text-sm mb-1 text-blue-300">💡 如何取得 ID？</p>
+                  <p>請查看您的試算表網址：</p>
+                  <div className="bg-black/40 p-3 rounded-lg font-mono break-all border border-blue-900/30">
+                    https://docs.google.com/spreadsheets/d/<span className="bg-amber-500/30 text-amber-400 px-1 rounded">10pgKjpvknfHn92FC-aFTcnJ5N_3beybq29B9aYhjZ2Q</span>/edit...
+                  </div>
+                  <p className="italic text-zinc-500 mt-2 underline">上圖橘色部分即為您的 Spreadsheet ID</p>
+                  <hr className="border-blue-800/30 my-3" />
+                  <p className="font-bold text-blue-300">⚠️ 權限提醒：</p>
+                  <p>請務必點擊試算表右上角「共用」，將您的「服務帳號 Email」新增為「編輯者」，系統才能成功存取。</p>
                 </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Spreadsheet ID</label>
                   <input
                     type="text"
-                    className="w-full px-4 py-3 rounded-xl border border-zinc-700 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm bg-zinc-800 text-white placeholder-zinc-600"
+                    className="w-full px-4 py-4 rounded-xl border border-zinc-700 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm bg-zinc-800 text-white placeholder-zinc-600 shadow-inner"
                     value={spreadsheetId}
                     onChange={(e) => setSpreadsheetId(e.target.value)}
-                    placeholder="請輸入試算表網址中的 ID 部分"
+                    placeholder="貼上試算表 ID (例如: 10pgKjpv...)"
                   />
                 </div>
               </div>
@@ -162,7 +167,7 @@ const App: React.FC = () => {
                 alert('設定已儲存！');
                 loadData();
               }}
-              className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-500 transition-all shadow-lg shadow-blue-900/20"
+              className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-500 transition-all shadow-lg shadow-blue-900/20 active:scale-[0.98]"
             >
               儲存並啟用自動同步
             </button>
