@@ -1,0 +1,7 @@
+{
+  "name": "零件管理雲端系統 (Parts Management Pro)",
+  "description": "一個專業級的零件管理系統，整合 Google 帳號登入、Google Sheets API 即時同步與 Gemini AI 智慧分析功能。專為五金與家具零件管理設計，包含玻璃拉門、鐵拉門、抽屜、桶身及噴漆等大項分類。",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
