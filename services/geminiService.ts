@@ -2,9 +2,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { PartCategory } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Removed global initialization to ensure each call uses the most up-to-date API key from the environment.
 
 export async function suggestPartDescription(category: PartCategory, name: string) {
+  // Initialize GoogleGenAI right before making an API call.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -18,10 +20,12 @@ export async function suggestPartDescription(category: PartCategory, name: strin
 }
 
 export async function analyzeInventory(records: any[]) {
+  // Initialize GoogleGenAI right before making an API call.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const dataSummary = records.map(r => `${r.category}: ${r.name} (${r.quantity}${r.unit})`).join(', ');
     const response = await ai.models.generateContent({
-      // FIX: Use gemini-3-pro-preview for complex reasoning and data analysis tasks
+      // Complex reasoning and data analysis task - using gemini-3-pro-preview
       model: 'gemini-3-pro-preview',
       contents: `以下是目前的零件庫存摘要：${dataSummary}。請針對庫存多樣性、可能的缺損風險或管理優化提出三點建議。`,
     });

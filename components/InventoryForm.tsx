@@ -59,7 +59,8 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
       .reduce((acc, r) => acc + r.quantity, 0);
   };
 
-  const fullStockSummary = useMemo(() => {
+  // Fixed Error: Explicitly typing useMemo to avoid unknown values in Object.entries later
+  const fullStockSummary = useMemo<Record<string, Record<string, number>>>(() => {
     if (!isGlassDoor) return {};
     const summary: Record<string, Record<string, number>> = {};
     DISPLAY_ORDER.forEach(spec => {
@@ -485,7 +486,8 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
                     <div 
                       key={model} 
                       className={`group flex items-center justify-between p-3 rounded-xl border transition-all ${
-                        isBatchEditing ? 'border-amber-500/30 bg-amber-900/5' : (qty > 0 ? 'bg-zinc-800/80 border-zinc-700 shadow-sm' : 'bg-zinc-900/30 border-zinc-800/50 opacity-40')
+                        // Fix Error on line 488: Cast qty to number for valid comparison
+                        isBatchEditing ? 'border-amber-500/30 bg-amber-900/5' : ((qty as number) > 0 ? 'bg-zinc-800/80 border-zinc-700 shadow-sm' : 'bg-zinc-900/30 border-zinc-800/50 opacity-40')
                       }`}
                     >
                       <span className="text-xs font-medium text-zinc-300 truncate pr-2">{model}</span>
@@ -508,10 +510,11 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
                             }}
                           />
                         ) : (
+                          // Fix Error on line 512: Cast qty to number for valid comparison
                           <span className={`text-xs font-black px-2 py-1 rounded-md min-w-[2.5rem] text-center ${
-                            qty > 0 ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-600'
+                            (qty as number) > 0 ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-600'
                           }`}>
-                            {qty}
+                            {qty as React.ReactNode}
                           </span>
                         )}
                       </div>
