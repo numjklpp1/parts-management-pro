@@ -22,17 +22,24 @@ const App: React.FC = () => {
 
     setLoading(true);
     try {
+      // 1. 優先抓取 Google Sheets 資料
       const sheetsService = new GoogleSheetsService(spreadsheetId);
       const data = await sheetsService.fetchRecords();
       setRecords(data);
       
+      // 2. 獨立進行 AI 分析，不影響主要資料顯示
       if (data.length > 0) {
-        const insights = await analyzeInventory(data);
-        setAiInsights(insights || '');
+        try {
+          const insights = await analyzeInventory(data);
+          setAiInsights(insights || '');
+        } catch (aiErr) {
+          console.error("AI Analysis skipped due to error:", aiErr);
+          setAiInsights("AI 分析功能暫時不可用。");
+        }
       }
     } catch (error: any) {
       console.error('Data loading error:', error);
-      alert('資料同步發生錯誤：' + error.message);
+      alert('試算表資料同步失敗：' + error.message);
     } finally {
       setLoading(false);
     }
@@ -56,7 +63,7 @@ const App: React.FC = () => {
         }
       } catch (err: any) {
         console.error('Failed to sync via proxy:', err);
-        alert('同步失敗：' + err.message);
+        alert('存檔至試算表失敗：' + err.message);
         setRecords(oldRecords);
       }
     }

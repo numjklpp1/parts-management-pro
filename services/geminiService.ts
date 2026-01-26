@@ -2,11 +2,14 @@
 import { GoogleGenAI } from "@google/genai";
 import { PartCategory } from '../types';
 
-// Removed global initialization to ensure each call uses the most up-to-date API key from the environment.
-
 export async function suggestPartDescription(category: PartCategory, name: string) {
-  // Initialize GoogleGenAI right before making an API call.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.warn("Gemini API Key is missing. Please set process.env.API_KEY.");
+    return "尚未設定 AI 金鑰，無法提供建議。";
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -20,12 +23,16 @@ export async function suggestPartDescription(category: PartCategory, name: strin
 }
 
 export async function analyzeInventory(records: any[]) {
-  // Initialize GoogleGenAI right before making an API call.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.warn("Gemini API Key is missing. Skipping analysis.");
+    return "⚠️ AI 分析功能尚未啟用：請在環境變數中設定 API_KEY。";
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   try {
-    const dataSummary = records.map(r => `${r.category}: ${r.name} (${r.quantity}${r.unit})`).join(', ');
+    const dataSummary = records.map(r => `${r.category}: ${r.name} (${r.quantity})`).join(', ');
     const response = await ai.models.generateContent({
-      // Complex reasoning and data analysis task - using gemini-3-pro-preview
       model: 'gemini-3-pro-preview',
       contents: `以下是目前的零件庫存摘要：${dataSummary}。請針對庫存多樣性、可能的缺損風險或管理優化提出三點建議。`,
     });
