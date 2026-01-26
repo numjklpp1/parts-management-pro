@@ -1,93 +1,63 @@
 
 import { PartRecord, PartCategory } from '../types';
 
-const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
+// 改為呼叫內部的 API Proxy，由後端處理 Service Account 認證
+const PROXY_API_ENDPOINT = '/api/inventory';
 
 export class GoogleSheetsService {
-  private accessToken: string;
   private spreadsheetId: string;
 
-  constructor(accessToken: string, spreadsheetId: string) {
-    this.accessToken = accessToken;
+  constructor(spreadsheetId: string) {
     this.spreadsheetId = spreadsheetId;
   }
 
+  /**
+   * 初始化試算表（透過 Proxy）
+   */
   async initializeSheet(): Promise<void> {
-    const headers = [
-      'ID', '時間', '類別', '名稱', '規格', '數量', '備註'
-    ];
-    
     try {
-      await fetch(`${SHEETS_API_BASE}/${this.spreadsheetId}/values/Sheet1!A1:G1?valueInputOption=RAW`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          values: [headers],
-        }),
-      });
-    } catch (error) {
-      console.error('Failed to initialize sheet:', error);
-    }
-  }
-
-  async addRecord(record: PartRecord): Promise<void> {
-    const row = [
-      record.id,
-      record.timestamp,
-      record.category,
-      record.name,
-      record.specification,
-      record.quantity,
-      record.note
-    ];
-
-    const response = await fetch(
-      `${SHEETS_API_BASE}/${this.spreadsheetId}/values/Sheet1!A1:append?valueInputOption=USER_ENTERED`,
-      {
+      const response = await fetch(`${PROXY_API_ENDPOINT}?action=initialize`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          values: [row],
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error('Failed to save to Google Sheets');
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spreadsheetId: this.spreadsheetId }),
+      });
+      if (!response.ok) throw new Error('Initialization failed');
+    } catch (error) {
+      console.error('Failed to initialize sheet via proxy:', error);
     }
   }
 
-  async fetchRecords(): Promise<PartRecord[]> {
-    const response = await fetch(
-      `${SHEETS_API_BASE}/${this.spreadsheetId}/values/Sheet1!A2:G1000`,
-      {
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-        },
-      }
-    );
+  /**
+   * 新增紀錄（透過 Proxy）
+   */
+  async addRecord(record: PartRecord): Promise<void> {
+    const response = await fetch(PROXY_API_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        spreadsheetId: this.spreadsheetId,
+        record: record
+      }),
+    });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch from Google Sheets');
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `同步失敗 (HTTP ${response.status})`);
+    }
+  }
+
+  /**
+   * 抓取所有紀錄（透過 Proxy）
+   */
+  async fetchRecords(): Promise<PartRecord[]> {
+    const response = await fetch(`${PROXY_API_ENDPOINT}?spreadsheetId=${this.spreadsheetId}`);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || '無法從雲端獲取資料');
     }
 
     const data = await response.json();
-    if (!data.values) return [];
-
-    return data.values.map((row: any[]) => ({
-      id: row[0],
-      timestamp: row[1],
-      category: row[2] as PartCategory,
-      name: row[3],
-      specification: row[4],
-      quantity: Number(row[5]),
-      note: row[6] || '',
-    }));
+    return data.records || [];
   }
 }

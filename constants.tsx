@@ -11,8 +11,8 @@ export const CATEGORIES = [
 
 export const UNITS = ['組', '個', '件', '米', '才', '公升'] as const;
 
-// 玻璃拉門專用配置
-export const GLASS_DOOR_GROUPS = ['玻璃', '玻璃條', '純框', '框_完成零件','框_含玻璃'] as const;
+// 玻璃拉門專用配置：統一與 Form 邏輯一致的組別名稱
+export const GLASS_DOOR_GROUPS = ['完成', '框_完成', '框', '玻璃膠條', '玻璃條', '玻璃'] as const;
 
 export const GLASS_DOOR_MODELS = [
   '樹德4尺-L', '樹德4尺-R', '樹德3尺-L', '樹德3尺-R',

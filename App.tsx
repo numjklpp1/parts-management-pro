@@ -13,17 +13,17 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'dashboard' | 'form' | 'list' | 'settings'>('dashboard');
   const [selectedCategory, setSelectedCategory] = useState<PartCategory>(PartCategory.CabinetBody);
   const [spreadsheetId, setSpreadsheetId] = useState<string>(localStorage.getItem('sheet_id') || '');
-  const [accessToken, setAccessToken] = useState<string>(localStorage.getItem('access_token') || '');
   const [records, setRecords] = useState<PartRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [aiInsights, setAiInsights] = useState('');
 
   const loadData = useCallback(async () => {
-    if (!spreadsheetId || !accessToken) return;
+    if (!spreadsheetId) return;
 
     setLoading(true);
     try {
-      const sheetsService = new GoogleSheetsService(accessToken, spreadsheetId);
+      // 現在只需傳入 spreadsheetId，Token 由後端 Proxy 處理
+      const sheetsService = new GoogleSheetsService(spreadsheetId);
       const data = await sheetsService.fetchRecords();
       setRecords(data);
       
@@ -33,35 +33,35 @@ const App: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Data loading error:', error);
-      if (error.message.includes('401')) {
-        alert('Access Token 已過期或無效，請在設定中更新。');
-      }
+      alert('資料同步發生錯誤：' + error.message);
     } finally {
       setLoading(false);
     }
-  }, [spreadsheetId, accessToken]);
+  }, [spreadsheetId]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // 修改：支援傳入單一紀錄或紀錄陣列
   const handleAddRecords = async (newRecords: PartRecord | PartRecord[]) => {
     const recordsArray = Array.isArray(newRecords) ? newRecords : [newRecords];
     
-    // 先更新 UI 狀態
+    // 樂觀更新 UI
+    const oldRecords = [...records];
     setRecords(prev => [...prev, ...recordsArray]);
 
-    if (spreadsheetId && accessToken) {
+    if (spreadsheetId) {
       try {
-        const sheetsService = new GoogleSheetsService(accessToken, spreadsheetId);
-        // 循序寫入所有紀錄到 Google Sheets
+        const sheetsService = new GoogleSheetsService(spreadsheetId);
+        // 透過 Proxy 寫入
         for (const record of recordsArray) {
           await sheetsService.addRecord(record);
         }
-      } catch (err) {
-        console.error('Failed to sync to Google Sheets:', err);
-        alert('同步至 Google Sheets 失敗，請檢查 Token 與 ID。');
+      } catch (err: any) {
+        console.error('Failed to sync via proxy:', err);
+        alert('同步失敗：' + err.message);
+        // 若失敗則回滾
+        setRecords(oldRecords);
       }
     }
   };
@@ -98,7 +98,7 @@ const App: React.FC = () => {
                currentView === 'form' ? `${selectedCategory} - 入庫登記` : 
                currentView === 'list' ? '庫存清單' : '系統設定'}
             </h2>
-            <p className="text-zinc-400 font-medium mt-1">零件管理雲端系統 (智慧庫存版)</p>
+            <p className="text-zinc-400 font-medium mt-1">零件管理雲端系統 (服務帳戶自動化版)</p>
           </div>
           <div className="flex items-center gap-3">
             <button 
@@ -111,14 +111,14 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {(!spreadsheetId || !accessToken) && currentView !== 'settings' && (
-          <div className="bg-blue-900/20 border border-blue-800/50 p-6 rounded-2xl mb-8 flex items-center gap-4 shadow-sm">
-            <span className="text-2xl">ℹ️</span>
+        {!spreadsheetId && currentView !== 'settings' && (
+          <div className="bg-amber-900/20 border border-amber-800/50 p-6 rounded-2xl mb-8 flex items-center gap-4 shadow-sm">
+            <span className="text-2xl">⚠️</span>
             <div className="flex-1">
-              <p className="font-bold text-blue-200">同步功能尚未啟用</p>
-              <p className="text-blue-300/80 text-sm">目前為本地預覽模式。若要同步至 Google Sheets，請至「系統設定」配置參數。</p>
+              <p className="font-bold text-amber-200">尚未配置雲端試算表</p>
+              <p className="text-amber-300/80 text-sm">請至「系統設定」填入 Spreadsheet ID 以啟用自動同步功能。</p>
             </div>
-            <button onClick={() => setCurrentView('settings')} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-500 transition-colors">前往設定</button>
+            <button onClick={() => setCurrentView('settings')} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-500 transition-colors">前往設定</button>
           </div>
         )}
 
@@ -136,27 +136,21 @@ const App: React.FC = () => {
           <div className="max-w-2xl space-y-6">
             <div className="bg-zinc-900 p-8 rounded-3xl shadow-sm border border-zinc-800">
               <h3 className="text-xl font-bold mb-6 text-white flex items-center gap-2">
-                <span className="text-green-500">📊</span> Google Sheets 同步設定
+                <span className="text-green-500">☁️</span> 自動化同步設定
               </h3>
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-zinc-400">Spreadsheet ID</label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-3 rounded-xl border border-zinc-700 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm bg-zinc-800 text-white"
-                    value={spreadsheetId}
-                    onChange={(e) => setSpreadsheetId(e.target.value)}
-                    placeholder="例如: 1A2B3C..."
-                  />
+                <div className="bg-blue-900/10 border border-blue-800/30 p-4 rounded-xl mb-4 text-xs text-blue-200">
+                  <p className="font-bold mb-1">💡 系統說明：</p>
+                  <p>本系統已升級為服務帳戶同步。您只需將試算表共用給您的服務帳戶 Email，並在此填入試算表 ID 即可自動運作，不再需要手動輸入 Access Token。</p>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-zinc-400">Google Access Token</label>
+                  <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Spreadsheet ID</label>
                   <input
-                    type="password"
-                    className="w-full px-4 py-3 rounded-xl border border-zinc-700 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm bg-zinc-800 text-white"
-                    value={accessToken}
-                    onChange={(e) => setAccessToken(e.target.value)}
-                    placeholder="請輸入您的 OAuth2 Token"
+                    type="text"
+                    className="w-full px-4 py-3 rounded-xl border border-zinc-700 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm bg-zinc-800 text-white placeholder-zinc-600"
+                    value={spreadsheetId}
+                    onChange={(e) => setSpreadsheetId(e.target.value)}
+                    placeholder="請輸入試算表網址中的 ID 部分"
                   />
                 </div>
               </div>
@@ -165,13 +159,12 @@ const App: React.FC = () => {
             <button 
               onClick={() => {
                 localStorage.setItem('sheet_id', spreadsheetId);
-                localStorage.setItem('access_token', accessToken);
                 alert('設定已儲存！');
                 loadData();
               }}
               className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-500 transition-all shadow-lg shadow-blue-900/20"
             >
-              儲存並套用所有設定
+              儲存並啟用自動同步
             </button>
           </div>
         )}
