@@ -20,6 +20,12 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
   const [isBatchEditing, setIsBatchEditing] = useState(false);
   const [batchValues, setBatchValues] = useState<Record<string, Record<string, string>>>({});
   
+  // 快速任務清單狀態
+  const [quickTasks, setQuickTasks] = useState<string[]>(() => {
+    const saved = localStorage.getItem('quick_tasks_inventory');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const qtyInputRef = useRef<HTMLInputElement>(null);
   const isGlassDoor = preselectedCategory === PartCategory.GlassSlidingDoor;
 
@@ -31,10 +37,21 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
     note: '' as string
   });
 
-  const DISPLAY_ORDER = ['完成', '框_完成', '框', '玻璃膠條', '玻璃條', '玻璃'];
-  const BASE_MODEL_SPECS = ['玻璃', '玻璃條', '玻璃膠條'];
+  // 保存任務清單到 localStorage
+  useEffect(() => {
+    localStorage.setItem('quick_tasks_inventory', JSON.stringify(quickTasks));
+  }, [quickTasks]);
 
-  // 生成較易讀的 ID：類別-年月日-隨機字元
+  const DISPLAY_ORDER = ['完成', '框_完成', '框', '框_未噴', '玻璃條', '玻璃'];
+  const BASE_MODEL_SPECS = ['玻璃', '玻璃條']; 
+
+  const getMergedBaseName = (name: string) => {
+    const base = name.replace(/-[LR]$/, '');
+    if (base === 'UG3A' || base === 'AK3B') return 'UG3A/AK3B';
+    if (base === 'UG2A' || base === 'AK2B') return 'UG2A/AK2B';
+    return base;
+  };
+
   const generateReadableId = (category: string) => {
     const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -45,7 +62,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
   const availableModels = useMemo(() => {
     if (!isGlassDoor) return [];
     if (BASE_MODEL_SPECS.includes(formData.specification)) {
-      const baseModels = GLASS_DOOR_MODELS.map(m => m.replace(/-[LR]$/, ''));
+      const baseModels = GLASS_DOOR_MODELS.map(m => getMergedBaseName(m));
       return Array.from(new Set(baseModels));
     }
     return GLASS_DOOR_MODELS as unknown as string[];
@@ -53,14 +70,14 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
 
   const getCurrentStock = (spec: string, modelName: string) => {
     const isBasePart = BASE_MODEL_SPECS.includes(spec);
-    const baseSearchName = isBasePart ? modelName.replace(/-[LR]$/, '') : modelName;
-
+    
     return allRecords
       .filter(r => {
         const isCorrectCat = r.category === PartCategory.GlassSlidingDoor;
         const isCorrectSpec = r.specification === spec;
-        const rNameBase = isBasePart ? r.name.replace(/-[LR]$/, '') : r.name;
-        return isCorrectCat && isCorrectSpec && rNameBase === baseSearchName;
+        const rName = isBasePart ? getMergedBaseName(r.name) : r.name;
+        const searchName = isBasePart ? getMergedBaseName(modelName) : modelName;
+        return isCorrectCat && isCorrectSpec && rName === searchName;
       })
       .reduce((acc, r) => acc + r.quantity, 0);
   };
@@ -72,7 +89,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
       summary[spec] = {};
       const isBasePart = BASE_MODEL_SPECS.includes(spec);
       const modelsForThisSpec = isBasePart 
-        ? Array.from(new Set(GLASS_DOOR_MODELS.map(m => m.replace(/-[LR]$/, ''))))
+        ? Array.from(new Set(GLASS_DOOR_MODELS.map(m => getMergedBaseName(m))))
         : [...GLASS_DOOR_MODELS] as string[];
 
       modelsForThisSpec.forEach(m => {
@@ -87,7 +104,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
     let defaultName = '';
     if (isGlassDoor) {
       if (BASE_MODEL_SPECS.includes(defaultSpec)) {
-        defaultName = (GLASS_DOOR_MODELS[0] as string).replace(/-[LR]$/, '');
+        defaultName = getMergedBaseName(GLASS_DOOR_MODELS[0] as string);
       } else {
         defaultName = GLASS_DOOR_MODELS[0];
       }
@@ -97,7 +114,8 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
       category: preselectedCategory,
       name: defaultName,
       specification: defaultSpec,
-      quantity: '0'
+      quantity: '0',
+      note: ''
     }));
   }, [preselectedCategory, isGlassDoor]);
 
@@ -110,23 +128,101 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
       const isNewSpecBase = BASE_MODEL_SPECS.includes(formData.specification);
       
       if (isNewSpecBase) {
-        const base = currentName.replace(/-[LR]$/, '');
-        if (availableModels.includes(base)) bestMatch = base;
+        const mergedBase = getMergedBaseName(currentName);
+        if (availableModels.includes(mergedBase)) bestMatch = mergedBase;
       } else {
-        const withL = currentName + '-L';
-        const withR = currentName + '-R';
-        if (availableModels.includes(withL)) bestMatch = withL;
-        else if (availableModels.includes(withR)) bestMatch = withR;
-        else {
-          const prefixMatch = availableModels.find(m => m.startsWith(currentName));
-          if (prefixMatch) bestMatch = prefixMatch;
-        }
+        const prefixMatch = availableModels.find(m => m.startsWith(currentName.split('/')[0]));
+        if (prefixMatch) bestMatch = prefixMatch;
       }
 
       if (bestMatch) setFormData(prev => ({ ...prev, name: bestMatch }));
       else setFormData(prev => ({ ...prev, name: availableModels[0] }));
     }
   }, [formData.specification, availableModels, isGlassDoor]);
+
+  const addQuickTask = () => {
+    if (!formData.note.trim()) return;
+    setQuickTasks(prev => [...prev, formData.note.trim()]);
+    setFormData(prev => ({ ...prev, note: '' }));
+  };
+
+  const removeQuickTask = (index: number) => {
+    setQuickTasks(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const completeQuickTask = async (task: string, index: number) => {
+    // 解析 "名稱*數量" 格式
+    const parts = task.split('*');
+    if (parts.length < 2) {
+      alert('格式錯誤，請確保輸入內容包含 "*" (例如: AS3B*120)');
+      return;
+    }
+
+    const namePart = parts[0].trim();
+    const qtyPart = parseInt(parts[1].trim());
+
+    if (isNaN(qtyPart)) {
+      alert('數量格式錯誤，"*" 後面必須是數字');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const timestamp = new Date().toLocaleString('zh-TW');
+      const recordsToSubmit: PartRecord[] = [];
+
+      // 建立主要紀錄
+      const mainRecord: PartRecord = {
+        category: formData.category,
+        name: namePart,
+        specification: formData.specification, // 延用當前選擇的組別
+        quantity: qtyPart,
+        id: generateReadableId(formData.category),
+        timestamp,
+        note: `[快速任務完成] 原文:${task}`
+      };
+      recordsToSubmit.push(mainRecord);
+
+      // 如果是玻璃拉門且非調整模式，觸發連動扣除
+      if (isGlassDoor) {
+        // 框連動
+        if (formData.specification === '完成') {
+          const stockFrameFinished = getCurrentStock('框_完成', namePart);
+          const deductFromFrameFinished = Math.min(stockFrameFinished, qtyPart);
+          const remainingFrameNeed = qtyPart - deductFromFrameFinished;
+          if (deductFromFrameFinished > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_完成', quantity: -deductFromFrameFinished, note: `快速任務扣料:框_完成` });
+          if (remainingFrameNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框', quantity: -remainingFrameNeed, note: `快速任務扣料:框` });
+        } 
+        else if (formData.specification === '框_完成') {
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框', quantity: -qtyPart, note: `快速任務扣料:框` });
+        } 
+        else if (formData.specification === '框') {
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_未噴', quantity: -qtyPart, note: `快速任務扣料:框_未噴` });
+        }
+
+        // 玻璃連動 (合併型號)
+        const mergedBaseName = getMergedBaseName(namePart);
+        if (formData.specification === '完成') {
+          const stockGlassStrip = getCurrentStock('玻璃條', mergedBaseName);
+          const deductFromGlassStrip = Math.min(stockGlassStrip, qtyPart);
+          const remainingGlassNeed = qtyPart - deductFromGlassStrip;
+          if (deductFromGlassStrip > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃條', quantity: -deductFromGlassStrip, note: `快速任務扣料:玻璃條` });
+          if (remainingGlassNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃', quantity: -remainingGlassNeed, note: `快速任務扣料:玻璃` });
+        } 
+        else if (formData.specification === '玻璃條') {
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃', quantity: -qtyPart, note: `快速任務扣料:玻璃` });
+        }
+      }
+
+      await onSubmit(recordsToSubmit);
+      removeQuickTask(index);
+      alert(`快速入庫成功：${namePart} (${qtyPart})`);
+    } catch (err) {
+      alert('快速任務執行失敗：' + err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAiSuggest = async () => {
     if (!formData.name) return;
@@ -213,24 +309,32 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
       recordsToSubmit.push(mainRecord);
 
       if (!isAdjustmentMode && isGlassDoor && numQty > 0) {
-        if (formData.specification === '玻璃膠條' || formData.specification === '玻璃條') {
-          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '玻璃', quantity: -numQty, note: `連動扣除 (隨 ${formData.specification} 新增)` });
-        } else if (formData.specification === '框_完成') {
-          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框', quantity: -numQty, note: `連動扣除 (隨 框_完成 新增)` });
-        } else if (formData.specification === '完成') {
-          const N = numQty;
+        const N = numQty;
+
+        if (formData.specification === '完成') {
           const stockFrameFinished = getCurrentStock('框_完成', formData.name);
           const deductFromFrameFinished = Math.min(stockFrameFinished, N);
           const remainingFrameNeed = N - deductFromFrameFinished;
-          if (deductFromFrameFinished > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框_完成', quantity: -deductFromFrameFinished, note: `完成品扣除 (優先項)` });
-          if (remainingFrameNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框', quantity: -remainingFrameNeed, note: `完成品扣除 (次要項)` });
-          
-          const baseName = formData.name.replace(/-[LR]$/, '');
-          const stockGlassGasket = getCurrentStock('玻璃膠條', baseName);
-          const deductFromGlassGasket = Math.min(stockGlassGasket, N);
-          const remainingGlassNeed = N - deductFromGlassGasket;
-          if (deductFromGlassGasket > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: baseName, specification: '玻璃膠條', quantity: -deductFromGlassGasket, note: `完成品扣除 (優先項)` });
-          if (remainingGlassNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: baseName, specification: '玻璃', quantity: -remainingGlassNeed, note: `完成品扣除 (次要項)` });
+          if (deductFromFrameFinished > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框_完成', quantity: -deductFromFrameFinished, note: `成品扣料:框_完成` });
+          if (remainingFrameNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框', quantity: -remainingFrameNeed, note: `成品扣料:框(備援)` });
+        } 
+        else if (formData.specification === '框_完成') {
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框', quantity: -N, note: `組裝扣料:框` });
+        } 
+        else if (formData.specification === '框') {
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框_未噴', quantity: -N, note: `噴漆扣料:框_未噴` });
+        }
+
+        const mergedBaseName = getMergedBaseName(formData.name);
+        if (formData.specification === '完成') {
+          const stockGlassStrip = getCurrentStock('玻璃條', mergedBaseName);
+          const deductFromGlassStrip = Math.min(stockGlassStrip, N);
+          const remainingGlassNeed = N - deductFromGlassStrip;
+          if (deductFromGlassStrip > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃條', quantity: -deductFromGlassStrip, note: `成品扣料:玻璃條` });
+          if (remainingGlassNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃', quantity: -remainingGlassNeed, note: `成品扣料:玻璃(備援)` });
+        } 
+        else if (formData.specification === '玻璃條') {
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃', quantity: -N, note: `加工扣料:玻璃` });
         }
       }
 
@@ -263,7 +367,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
               {formData.category} - {isAdjustmentMode ? '🛠️ 手動庫存調整' : (displayQty < 0 ? '手動庫存修正' : '入庫登記')}
             </h2>
             <p className={`${isAdjustmentMode ? 'text-amber-400/80' : 'text-zinc-500'} mt-1 text-sm font-medium`}>
-              {isAdjustmentMode ? '⚠️ 此模式下紀錄將標記為手動調整，不觸發連動扣減邏輯' : `正在${displayQty < 0 ? '修正' : '新增'}一筆項目至 ${formData.category} 分類`}
+              {isAdjustmentMode ? '⚠️ 此模式下紀錄將標記為手動調整' : `正在${displayQty < 0 ? '修正' : '新增'}一筆項目`}
             </p>
           </div>
           <span className={`text-4xl transition-all ${isAdjustmentMode ? 'opacity-100 scale-110 drop-shadow-[0_0_15px_rgba(245,158,11,0.6)]' : 'opacity-50'}`}>
@@ -317,7 +421,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
                       onClick={() => setShowStockOverlay(!showStockOverlay)}
                       className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-zinc-800/50 border border-zinc-700/50 text-xs font-bold text-blue-400 hover:bg-zinc-700/50 transition-all active:scale-95"
                     >
-                      📊 檢視玻璃拉門所有庫存 (依組別排序)
+                      📊 檢視玻璃拉門所有庫存 (依流程排序)
                     </button>
                     
                     <button
@@ -392,13 +496,56 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">備註</label>
-              <textarea
-                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 outline-none bg-zinc-800 text-white min-h-[100px] transition-all ${isAdjustmentMode ? 'border-amber-700 focus:ring-amber-500' : 'border-zinc-700 focus:ring-blue-500'}`}
-                value={formData.note}
-                onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                placeholder={isAdjustmentMode ? "請輸入調整原因..." : "選填，如修正請註明原因..."}
-              />
+              <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">待辦清單 (輸入「名稱*數量」後按➕)</label>
+              <div className="flex gap-2">
+                <input
+                  type="text-xl"
+                  className={`flex-1 px-4 py-3 rounded-xl border focus:ring-2 outline-none bg-zinc-800 text-white placeholder-zinc-600 transition-all ${isAdjustmentMode ? 'border-amber-700 focus:ring-amber-500' : 'border-zinc-700 focus:ring-blue-500'}`}
+                  value={formData.note}
+                  onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addQuickTask(); } }}
+                  placeholder="例如: AS3B*120"
+                />
+                <button
+                  type="button"
+                  onClick={addQuickTask}
+                  className="px-6 bg-zinc-800 text-blue-400 border border-zinc-700 rounded-xl hover:bg-zinc-700 active:scale-95 transition-all font-bold"
+                >
+                  ➕
+                </button>
+              </div>
+
+              {/* 快速任務清單顯示區 */}
+              {isGlassDoor && quickTasks.length > 0 && (
+                <div className="mt-4 p-4 bg-black/40 rounded-2xl border border-zinc-800 space-y-3">
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">📝 待執行任務 ({formData.specification})</p>
+                  <div className="flex flex-wrap gap-2">
+                    {quickTasks.map((task, idx) => (
+                      <div key={idx} className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-lg pl-3 pr-1 py-1 group animate-in zoom-in-95 duration-200">
+                        <span className="text-xl font-mono text-zinc-300 mr-2">{task}</span>
+                        <button
+                          type="button"
+                          onClick={() => completeQuickTask(task, idx)}
+                          disabled={loading}
+                          className="p-1.5 text-green-500 hover:bg-green-500/20 rounded-md transition-colors"
+                          title="標記完成入庫"
+                        >
+                          ✅
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeQuickTask(idx)}
+                          className="p-1.5 text-red-400 hover:bg-red-400/20 rounded-md transition-colors"
+                          title="刪除"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-zinc-600 italic">點擊 ✅ 會以當前選擇的「{formData.specification}」組別自動執行連動入庫。</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -407,7 +554,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
             disabled={loading}
             className={`w-full py-4 rounded-xl font-bold text-lg shadow-xl transition-all ${isAdjustmentMode ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20' : (displayQty < 0 ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20')} text-white`}
           >
-            {loading ? '處理中...' : (isAdjustmentMode ? '確認手動調整 (不連動)' : '確認提交紀錄')}
+            {loading ? '處理中...' : (isAdjustmentMode ? '確認手動調整' : '確認提交紀錄')}
           </button>
         </form>
       </div>
@@ -416,7 +563,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
         <div className="absolute inset-x-0 bottom-0 top-[88px] bg-black/95 backdrop-blur-md z-20 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300 rounded-b-3xl border-t border-zinc-800 shadow-2xl">
           <div className="p-6 border-b border-zinc-800 flex justify-between items-center sticky top-0 bg-black/60 backdrop-blur-md z-30">
             <h4 className="font-bold text-white flex items-center gap-2 text-lg">
-              <span className="text-blue-400">📊</span> 玻璃拉門全項庫存
+              <span className="text-blue-400">📊</span> 玻璃拉門全項庫存 (流程檢視)
             </h4>
             
             <div className="flex items-center gap-3">
@@ -453,7 +600,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
           <div className="flex-1 overflow-y-auto p-4 space-y-8 pb-10">
             {isBatchEditing && (
               <div className="bg-amber-900/20 border border-amber-800/30 p-4 rounded-2xl mb-4 text-amber-200 text-xs flex items-center gap-3">
-                <span>💡 提示：您現在可以直接點擊下方數值進行修改。完成後請點擊右上角「儲存」。</span>
+                <span>💡 提示：您現在可以直接點擊下方數值進行修改。</span>
               </div>
             )}
 
@@ -509,7 +656,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
           </div>
           
           <div className="p-4 bg-zinc-900/80 border-t border-zinc-800 text-center text-[10px] text-zinc-500 italic">
-            {isBatchEditing ? '⚠️ 批次調整將會自動產生增減紀錄 (Delta)，不會連動其他零件。' : '提示：使用右上角「🛠️ 調整庫存」可進入批次修改模式。'}
+            💡 生產鏈說明：框_未噴 → 框 → 框_完成 → 完成；玻璃 → 玻璃條 → 完成。
           </div>
         </div>
       )}
