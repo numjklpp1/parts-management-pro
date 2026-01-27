@@ -9,7 +9,8 @@ export async function suggestPartDescription(category: PartCategory, name: strin
     return "尚未設定 AI 金鑰，無法提供建議。";
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  // Fix: Strictly following the SDK guideline to initialize with { apiKey: process.env.API_KEY }.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -29,7 +30,8 @@ export async function analyzeInventory(records: any[]) {
     return "⚠️ AI 分析功能尚未啟用：請在環境變數中設定 API_KEY。";
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  // Fix: Strictly following the SDK guideline to initialize with { apiKey: process.env.API_KEY }.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const dataSummary = records.map(r => `${r.category}: ${r.name} (${r.quantity})`).join(', ');
     const response = await ai.models.generateContent({
