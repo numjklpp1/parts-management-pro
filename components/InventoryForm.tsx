@@ -39,7 +39,8 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
     note: '' as string
   });
 
-  const DISPLAY_ORDER = ['完成', '框_完成', '框', '框_未噴', '玻璃條', '玻璃'];
+  // 更新顯示順序
+  const DISPLAY_ORDER = ['完成', '框_噴完', '框_製作完成', '框_待辦', '玻璃條', '玻璃'];
   const BASE_MODEL_SPECS = ['玻璃', '玻璃條']; 
 
   const getMergedBaseName = (name: string) => {
@@ -179,14 +180,18 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
       };
       recordsToSubmit.push(mainRecord);
 
-      // 自動扣料邏輯
+      // 自動扣料邏輯：根據新的生產流程順序連鎖扣料
       if (isGlassDoor) {
         if (formData.specification === '完成') {
-          const stockFrameFinished = getCurrentStock('框_完成', namePart);
-          const d1 = Math.min(stockFrameFinished, qtyPart);
+          const stockA = getCurrentStock('框_噴完', namePart);
+          const d1 = Math.min(stockA, qtyPart);
           const r1 = qtyPart - d1;
-          if (d1 > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_完成', quantity: -d1, note: `扣料:框_完成` });
-          if (r1 > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框', quantity: -r1, note: `扣料:框` });
+          if (d1 > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_噴完', quantity: -d1, note: `自動扣料:框_噴完` });
+          if (r1 > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_製作完成', quantity: -r1, note: `自動扣料:框_製作完成` });
+        } else if (formData.specification === '框_噴完') {
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_製作完成', quantity: -qtyPart, note: `自動扣料:框_製作完成` });
+        } else if (formData.specification === '框_製作完成') {
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_待辦', quantity: -qtyPart, note: `自動扣料:框_待辦` });
         }
       }
 
@@ -264,6 +269,22 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
         note: isAdjustmentMode ? `[手動] ${formData.note}` : formData.note
       };
       recordsToSubmit.push(mainRecord);
+      
+      // 手動入庫時的扣料邏輯同步更新
+      if (!isAdjustmentMode && isGlassDoor) {
+        if (formData.specification === '完成') {
+          const stockA = getCurrentStock('框_噴完', formData.name);
+          const d1 = Math.min(stockA, numQty);
+          const r1 = numQty - d1;
+          if (d1 > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框_噴完', quantity: -d1, note: `自動扣料:框_噴完` });
+          if (r1 > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框_製作完成', quantity: -r1, note: `自動扣料:框_製作完成` });
+        } else if (formData.specification === '框_噴完') {
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框_製作完成', quantity: -numQty, note: `自動扣料:框_製作完成` });
+        } else if (formData.specification === '框_製作完成') {
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框_待辦', quantity: -numQty, note: `自動扣料:框_待辦` });
+        }
+      }
+
       await onSubmit(recordsToSubmit);
       setFormData({ ...formData, quantity: '0', note: '' });
       setIsAdjustmentMode(false);
@@ -376,10 +397,8 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
       {showStockOverlay && (
         <div className="absolute inset-x-0 bottom-0 top-[88px] bg-black/95 backdrop-blur-md z-20 flex flex-col rounded-b-3xl border-t border-zinc-800 shadow-2xl overflow-hidden">
           <div className="p-6 border-b border-zinc-800 flex justify-between items-center">
-            {/* 更新為 📚 玻璃門庫存 */}
             <h4 className="font-bold text-white flex items-center gap-2">📚 玻璃門庫存</h4>
             <div className="flex gap-2">
-               {/* 按鈕微調為 🛠️ 調整庫存 */}
                <button onClick={isBatchEditing ? saveBatchAdjustments : enterBatchEdit} className={`px-4 py-2 rounded-xl font-bold text-sm ${isBatchEditing ? 'bg-green-600 text-white' : 'bg-amber-600/20 text-amber-500'}`}>
                 {isBatchEditing ? '💾 儲存調整' : '🛠️ 調整庫存'}
               </button>

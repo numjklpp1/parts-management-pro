@@ -14,7 +14,7 @@ const SUMMARY_MAPPING: Record<string, Record<string, string>> = {
     '樹德3尺-L': '門!D3',
     '樹德3尺-R': '門!E3',
   },
-  '框_完成': {
+  '框_製作完成': {
     '樹德4尺-L': '門!B4',
     '樹德4尺-R': '門!C4',
   }
