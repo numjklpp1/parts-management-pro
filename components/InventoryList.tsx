@@ -11,7 +11,8 @@ const InventoryList: React.FC<InventoryListProps> = ({ records }) => {
 
   const filtered = records.filter(r => 
     r.name.toLowerCase().includes(search.toLowerCase()) ||
-    r.category.toLowerCase().includes(search.toLowerCase())
+    r.category.toLowerCase().includes(search.toLowerCase()) ||
+    (r.note && r.note.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -25,7 +26,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ records }) => {
           <div className="relative">
             <input
               type="text"
-              placeholder="搜尋名稱、類別..."
+              placeholder="搜尋名稱、類別、備註..."
               className="pl-10 pr-4 py-2 rounded-xl border border-zinc-700 focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-64 bg-zinc-800 text-white placeholder-zinc-500"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -40,7 +41,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ records }) => {
               <tr>
                 <th className="px-6 py-4">時間</th>
                 <th className="px-6 py-4">分類</th>
-                <th className="px-6 py-4">項目名稱</th>
+                <th className="px-6 py-4">項目名稱與備註</th>
                 <th className="px-6 py-4 text-center">異動量</th>
               </tr>
             </thead>
@@ -60,6 +61,15 @@ const InventoryList: React.FC<InventoryListProps> = ({ records }) => {
                   <td className="px-6 py-4">
                     <span className="font-semibold text-white">{record.name}</span>
                     <p className="text-xs text-zinc-500 font-normal mt-0.5">{record.specification}</p>
+                    {/* 這裡加入備註顯示，確保手機版能看到 */}
+                    {record.note && (
+                      <div className="mt-2 p-2 bg-black/30 rounded-lg border border-zinc-800/50">
+                        <p className="text-xs text-blue-300 flex items-start gap-1">
+                          <span className="shrink-0">📝</span>
+                          <span className="break-all">{record.note}</span>
+                        </p>
+                      </div>
+                    )}
                     <p className="text-[10px] text-zinc-700 mt-1 uppercase font-mono tracking-tighter">ID: {record.id}</p>
                   </td>
                   <td className="px-6 py-4 text-center">

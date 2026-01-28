@@ -12,7 +12,7 @@ export const CATEGORIES = [
 export const UNITS = ['組', '個', '件', '米', '才', '公升'] as const;
 
 // 玻璃拉門專用配置：更新組別名稱與生產流程順序
-export const GLASS_DOOR_GROUPS = ['完成', '框_完成', '框', '框_未噴', '玻璃條', '玻璃'] as const;
+export const GLASS_DOOR_GROUPS = ['完成', '框_完成', '框_噴完', '框_未噴', '玻璃條', '玻璃'] as const;
 
 export const GLASS_DOOR_MODELS = [
   '樹德4尺-L', '樹德4尺-R', '樹德3尺-L', '樹德3尺-R',

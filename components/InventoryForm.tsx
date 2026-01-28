@@ -20,7 +20,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
   const [isBatchEditing, setIsBatchEditing] = useState(false);
   const [batchValues, setBatchValues] = useState<Record<string, Record<string, string>>>({});
   
-  // 快速任務清單狀態
   const [quickTasks, setQuickTasks] = useState<string[]>(() => {
     const saved = localStorage.getItem('quick_tasks_inventory');
     return saved ? JSON.parse(saved) : [];
@@ -37,7 +36,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
     note: '' as string
   });
 
-  // 保存任務清單到 localStorage
   useEffect(() => {
     localStorage.setItem('quick_tasks_inventory', JSON.stringify(quickTasks));
   }, [quickTasks]);
@@ -70,7 +68,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
 
   const getCurrentStock = (spec: string, modelName: string) => {
     const isBasePart = BASE_MODEL_SPECS.includes(spec);
-    
     return allRecords
       .filter(r => {
         const isCorrectCat = r.category === PartCategory.GlassSlidingDoor;
@@ -305,7 +302,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
 
       if (!isAdjustmentMode && isGlassDoor && numQty > 0) {
         const N = numQty;
-
         if (formData.specification === '完成') {
           const stockFrameFinished = getCurrentStock('框_完成', formData.name);
           const deductFromFrameFinished = Math.min(stockFrameFinished, N);
@@ -422,13 +418,13 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
                     <button
                       type="button"
                       onClick={() => setIsAdjustmentMode(!isAdjustmentMode)}
-                      className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border font-bold text-xs transition-all active:scale-95 ${
+                      className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl  border font-bold text-xl transition-all active:scale-95 ${
                         isAdjustmentMode 
                         ? 'bg-amber-600/20 border-amber-500 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.1)]' 
                         : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      {isAdjustmentMode ? '🛠️ 手動調整模式：開啟中' : '🛠️ 切換手動調整存貨 (不連動)'}
+                      {isAdjustmentMode ? '🛠️ 手動調整模式：開啟中' : '🛠️ 調整存貨'}
                     </button>
                   </div>
                 </div>
@@ -498,7 +494,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">待辦清單 (輸入「名稱*數量」後按➕)</label>
+              <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">備註 / 待辦 (輸入「名稱*數量」後按➕)</label>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -517,14 +513,13 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
                 </button>
               </div>
 
-              {/* 快速任務清單顯示區 */}
               {isGlassDoor && quickTasks.length > 0 && (
                 <div className="mt-4 p-4 bg-black/40 rounded-2xl border border-zinc-800 space-y-3">
                   <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">📝 待執行任務 ({formData.specification})</p>
                   <div className="flex flex-wrap gap-2">
                     {quickTasks.map((task, idx) => (
                       <div key={idx} className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-lg pl-3 pr-1 py-1 group animate-in zoom-in-95 duration-200">
-                        <span className="text-xl font-mono text-zinc-300 mr-2">{task}</span>
+                        <span className="text-xl font-mono text-white mr-2">{task}</span>
                         <button
                           type="button"
                           onClick={() => completeQuickTask(task, idx)}
@@ -545,7 +540,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
                       </div>
                     ))}
                   </div>
-                  <p className="text-[9px] text-zinc-600 italic">點擊 ✅ 會以當前選擇的「{formData.specification}」組別自動執行連動入庫。</p>
                 </div>
               )}
             </div>
@@ -572,16 +566,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
               >
                 {loading ? '儲存中...' : (isBatchEditing ? '💾 儲存所有調整項目' : '🛠️ 調整庫存')}
               </button>
-              
-              {isBatchEditing && (
-                <button 
-                  onClick={() => setIsBatchEditing(false)}
-                  className="px-4 py-2 bg-zinc-800 text-zinc-400 rounded-xl font-bold text-sm hover:text-white"
-                >
-                  ❌ 取消
-                </button>
-              )}
-
               <button 
                 onClick={() => { setShowStockOverlay(false); setIsBatchEditing(false); }}
                 className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400 transition-colors"
@@ -592,12 +576,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-8 pb-10">
-            {isBatchEditing && (
-              <div className="bg-amber-900/20 border border-amber-800/30 p-4 rounded-2xl mb-4 text-amber-200 text-xs flex items-center gap-3">
-                <span>💡 提示：您現在可以直接點擊下方數值進行修改。</span>
-              </div>
-            )}
-
             {DISPLAY_ORDER.map(spec => (
               <section key={spec} className="space-y-4">
                 <div className="flex items-center gap-4 sticky top-0 bg-zinc-950/80 backdrop-blur-sm py-2 z-10">
@@ -607,17 +585,17 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
                   <div className="h-px flex-1 bg-zinc-800"></div>
                 </div>
                 
-                {/* 佈局修改：手機版 grid-cols-2 實現雙欄呈現 */}
+                {/* --- 調整區：手機版雙欄佈局 (grid-cols-2) --- */}
                 <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {Object.entries(fullStockSummary[spec] || {}).map(([model, qty]) => (
                     <div 
                       key={model} 
-                      className={`group flex items-center gap-2 p-2.5 rounded-xl border transition-all ${
-                        isBatchEditing ? 'border-amber-500/30 bg-amber-900/5' : ((qty as number) > 0 ? 'bg-zinc-800/80 border-zinc-700 shadow-sm' : 'bg-zinc-900/30 border-zinc-800/50 opacity-40')
+                      className={`group flex items-center gap-1.5 p-2 rounded-xl border transition-all ${
+                        isBatchEditing ? 'border-amber-500/30 bg-amber-900/5' : ((qty as number) > 0 ? 'bg-zinc-800/80 border-zinc-700 shadow-sm' : 'bg-zinc-900/30 border-zinc-800/50')
                       }`}
                     >
-                      {/* 調整此處更改型號字體大小 (原本是 text-xs) */}
-                      <span className="text-lg font-bold text-zinc-200 truncate flex-1 min-w-0">{model}</span>
+                      {/* --- 調整區：型號字體顏色與大小 (text-xl, text-white) --- */}
+                      <span className="text-xl font-bold text-white truncate flex-1 min-w-0">{model}</span>
                       
                       <div className="flex items-center">
                         {isBatchEditing ? (
@@ -629,16 +607,13 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
                             onChange={(e) => {
                               const val = e.target.value;
                               if (val === '' || val === '-' || !isNaN(Number(val))) {
-                                setBatchValues({
-                                  ...batchValues,
-                                  [spec]: { ...batchValues[spec], [model]: val }
-                                });
+                                setBatchValues({ ...batchValues, [spec]: { ...batchValues[spec], [model]: val } });
                               }
                             }}
                           />
                         ) : (
-                          /* 調整此處更改數量字體大小與樣式 */
-                          <span className={`text-base font-black px-2 py-0.5 rounded-lg min-w-[2rem] text-center ${
+                          /* --- 調整區：數量緊貼名稱後的樣式 (text-base) --- */
+                          <span className={`text-base font-black px-1.5 py-0.5 rounded-lg text-center ${
                             (qty as number) > 0 ? 'bg-blue-600/20 text-blue-400' : 'bg-zinc-800 text-zinc-600'
                           }`}>
                             {qty as React.ReactNode}
@@ -650,10 +625,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
                 </div>
               </section>
             ))}
-          </div>
-          
-          <div className="p-4 bg-zinc-900/80 border-t border-zinc-800 text-center text-[10px] text-zinc-500 italic">
-            💡 生產鏈說明：框_未噴 → 框 → 框_完成 → 完成；玻璃 → 玻璃條 → 完成。
           </div>
         </div>
       )}
