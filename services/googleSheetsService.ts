@@ -60,4 +60,29 @@ export class GoogleSheetsService {
     const data = await response.json();
     return data.records || [];
   }
+
+  /**
+   * 雲端同步：抓取待辦任務
+   */
+  async fetchTasks(): Promise<string[]> {
+    const response = await fetch(`${PROXY_API_ENDPOINT}?spreadsheetId=${this.spreadsheetId}&type=tasks`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.tasks || [];
+  }
+
+  /**
+   * 雲端同步：儲存待辦任務
+   */
+  async updateTasks(tasks: string[]): Promise<void> {
+    const response = await fetch(`${PROXY_API_ENDPOINT}?type=tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        spreadsheetId: this.spreadsheetId,
+        tasks: tasks
+      }),
+    });
+    if (!response.ok) throw new Error('同步任務失敗');
+  }
 }

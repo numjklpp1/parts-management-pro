@@ -7,8 +7,6 @@ export const config = {
   },
 };
 
-// 設定零件與儲存格的對照表 (Cell Mapping)
-// 格式為：[組別][零件名稱] : "分頁!儲存格"
 const SUMMARY_MAPPING: Record<string, Record<string, string>> = {
   '完成': {
     '樹德4尺-L': '門!B3',
@@ -25,6 +23,7 @@ const SUMMARY_MAPPING: Record<string, Record<string, string>> = {
 export default async function handler(req: any, res: any) {
   const { method, query, body } = req;
   const spreadsheetId = query.spreadsheetId || (body && body.spreadsheetId) || process.env.spreadsheet_id;
+  const type = query.type; // 'tasks' or undefined (records)
 
   if (!spreadsheetId) {
     return res.status(400).json({ message: '尚未配置 Spreadsheet ID。' });
@@ -47,80 +46,107 @@ export default async function handler(req: any, res: any) {
     });
 
     const sheets = google.sheets({ version: 'v4', auth });
-    const logSheetName = '門資料庫'; 
+    // 更新分頁名稱
+    const logSheetName = '玻璃門庫存資料庫'; 
+    const taskSheetName = '玻璃門待辦資料庫';
 
     if (method === 'GET') {
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: `${logSheetName}!A2:G2000`,
-      });
-      const rows = response.data.values || [];
-      const records = rows.map((row: any) => ({
-        id: row[0] || '',
-        timestamp: row[1] || '',
-        category: row[2] || '',
-        name: row[3] || '',
-        specification: row[4] || '',
-        quantity: Number(row[5]) || 0,
-        note: row[6] || '',
-      }));
-      return res.status(200).json({ records });
+      if (type === 'tasks') {
+        // 抓取待辦清單
+        try {
+          const response = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: `${taskSheetName}!A1:A100`,
+          });
+          const rows = response.data.values || [];
+          const tasks = rows.map((r: any) => r[0]).filter(Boolean);
+          return res.status(200).json({ tasks });
+        } catch (e) {
+          // 如果分頁不存在，回傳空清單
+          return res.status(200).json({ tasks: [] });
+        }
+      } else {
+        // 抓取流水帳
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: `${logSheetName}!A2:G2000`,
+        });
+        const rows = response.data.values || [];
+        const records = rows.map((row: any) => ({
+          id: row[0] || '',
+          timestamp: row[1] || '',
+          category: row[2] || '',
+          name: row[3] || '',
+          specification: row[4] || '',
+          quantity: Number(row[5]) || 0,
+          note: row[6] || '',
+        }));
+        return res.status(200).json({ records });
+      }
     } 
     
     else if (method === 'POST') {
-      const { record } = body;
-      if (!record) return res.status(400).json({ message: 'No record provided' });
-
-      // 1. 寫入流水帳 (門資料庫)
-      await sheets.spreadsheets.values.append({
-        spreadsheetId,
-        range: `${logSheetName}!A2`,
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [[
-            record.id,
-            record.timestamp,
-            record.category,
-            record.name,
-            record.specification,
-            record.quantity,
-            record.note
-          ]],
-        },
-      });
-
-      // 2. 檢查是否有對應的彙整儲存格需要更新
-      const targetCell = SUMMARY_MAPPING[record.specification]?.[record.name];
-      
-      if (targetCell) {
-        try {
-          // A. 讀取該儲存格目前的數值
-          const getRes = await sheets.spreadsheets.values.get({
-            spreadsheetId,
-            range: targetCell,
-          });
-          
-          const currentValue = Number(getRes.data.values?.[0]?.[0]) || 0;
-          const newValue = currentValue + record.quantity;
-
-          // B. 寫回更新後的數值
+      if (type === 'tasks') {
+        const { tasks } = body;
+        // 覆寫待辦清單
+        // 先清空
+        await sheets.spreadsheets.values.clear({
+          spreadsheetId,
+          range: `${taskSheetName}!A1:A100`,
+        });
+        // 如果有任務，寫入
+        if (tasks && tasks.length > 0) {
           await sheets.spreadsheets.values.update({
             spreadsheetId,
-            range: targetCell,
+            range: `${taskSheetName}!A1`,
             valueInputOption: 'RAW',
             requestBody: {
-              values: [[newValue]],
+              values: tasks.map((t: string) => [t]),
             },
           });
-          
-          console.log(`Updated ${targetCell}: ${currentValue} -> ${newValue}`);
-        } catch (summaryErr) {
-          console.error('Summary update failed:', summaryErr);
-          // 彙整失敗不中斷主流程，僅記錄錯誤
         }
-      }
+        return res.status(200).json({ message: 'Tasks updated' });
+      } else {
+        // 寫入流水帳
+        const { record } = body;
+        if (!record) return res.status(400).json({ message: 'No record provided' });
 
-      return res.status(200).json({ message: 'Success' });
+        await sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: `${logSheetName}!A2`,
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: [[
+              record.id,
+              record.timestamp,
+              record.category,
+              record.name,
+              record.specification,
+              record.quantity,
+              record.note
+            ]],
+          },
+        });
+
+        // 檢查 Summary Mapping
+        const targetCell = SUMMARY_MAPPING[record.specification]?.[record.name];
+        if (targetCell) {
+          try {
+            const getRes = await sheets.spreadsheets.values.get({ spreadsheetId, range: targetCell });
+            const currentValue = Number(getRes.data.values?.[0]?.[0]) || 0;
+            const newValue = currentValue + record.quantity;
+            await sheets.spreadsheets.values.update({
+              spreadsheetId,
+              range: targetCell,
+              valueInputOption: 'RAW',
+              requestBody: { values: [[newValue]] },
+            });
+          } catch (summaryErr) {
+            console.error('Summary update failed:', summaryErr);
+          }
+        }
+        return res.status(200).json({ message: 'Success' });
+      }
     }
 
     return res.status(405).json({ message: 'Method Not Allowed' });

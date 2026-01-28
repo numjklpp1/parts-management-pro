@@ -8,9 +8,17 @@ interface InventoryFormProps {
   onSubmit: (records: PartRecord | PartRecord[]) => Promise<void>;
   preselectedCategory: PartCategory;
   allRecords: PartRecord[];
+  quickTasks: string[];
+  onUpdateQuickTasks: (tasks: string[]) => Promise<void>;
 }
 
-const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCategory, allRecords }) => {
+const InventoryForm: React.FC<InventoryFormProps> = ({ 
+  onSubmit, 
+  preselectedCategory, 
+  allRecords,
+  quickTasks = [],
+  onUpdateQuickTasks
+}) => {
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState('');
@@ -19,11 +27,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
   
   const [isBatchEditing, setIsBatchEditing] = useState(false);
   const [batchValues, setBatchValues] = useState<Record<string, Record<string, string>>>({});
-  
-  const [quickTasks, setQuickTasks] = useState<string[]>(() => {
-    const saved = localStorage.getItem('quick_tasks_inventory');
-    return saved ? JSON.parse(saved) : [];
-  });
 
   const qtyInputRef = useRef<HTMLInputElement>(null);
   const isGlassDoor = preselectedCategory === PartCategory.GlassSlidingDoor;
@@ -35,10 +38,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
     quantity: '0' as string | number,
     note: '' as string
   });
-
-  useEffect(() => {
-    localStorage.setItem('quick_tasks_inventory', JSON.stringify(quickTasks));
-  }, [quickTasks]);
 
   const DISPLAY_ORDER = ['完成', '框_完成', '框', '框_未噴', '玻璃條', '玻璃'];
   const BASE_MODEL_SPECS = ['玻璃', '玻璃條']; 
@@ -139,18 +138,20 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
 
   const addQuickTask = () => {
     if (!formData.note.trim()) return;
-    setQuickTasks(prev => [...prev, formData.note.trim()]);
+    const newTasks = [...quickTasks, formData.note.trim()];
+    onUpdateQuickTasks(newTasks);
     setFormData(prev => ({ ...prev, note: '' }));
   };
 
   const removeQuickTask = (index: number) => {
-    setQuickTasks(prev => prev.filter((_, i) => i !== index));
+    const newTasks = quickTasks.filter((_, i) => i !== index);
+    onUpdateQuickTasks(newTasks);
   };
 
   const completeQuickTask = async (task: string, index: number) => {
     const parts = task.split('*');
     if (parts.length < 2) {
-      alert('格式錯誤，請確保輸入內容包含 "*" (例如: AS3B*120)');
+      alert('格式錯誤 (例如: AS3B*120)');
       return;
     }
 
@@ -158,7 +159,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
     const qtyPart = parseInt(parts[1].trim());
 
     if (isNaN(qtyPart)) {
-      alert('數量格式錯誤，"*" 後面必須是數字');
+      alert('數量格式錯誤');
       return;
     }
 
@@ -174,54 +175,29 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
         quantity: qtyPart,
         id: generateReadableId(formData.category),
         timestamp,
-        note: `[快速任務完成] 原文:${task}`
+        note: `[快速雲端任務] ${task}`
       };
       recordsToSubmit.push(mainRecord);
 
+      // 自動扣料邏輯
       if (isGlassDoor) {
         if (formData.specification === '完成') {
           const stockFrameFinished = getCurrentStock('框_完成', namePart);
-          const deductFromFrameFinished = Math.min(stockFrameFinished, qtyPart);
-          const remainingFrameNeed = qtyPart - deductFromFrameFinished;
-          if (deductFromFrameFinished > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_完成', quantity: -deductFromFrameFinished, note: `快速任務扣料:框_完成` });
-          if (remainingFrameNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框', quantity: -remainingFrameNeed, note: `快速任務扣料:框` });
-        } 
-        else if (formData.specification === '框_完成') {
-          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框', quantity: -qtyPart, note: `快速任務扣料:框` });
-        } 
-        else if (formData.specification === '框') {
-          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_未噴', quantity: -qtyPart, note: `快速任務扣料:框_未噴` });
-        }
-
-        const mergedBaseName = getMergedBaseName(namePart);
-        if (formData.specification === '完成') {
-          const stockGlassStrip = getCurrentStock('玻璃條', mergedBaseName);
-          const deductFromGlassStrip = Math.min(stockGlassStrip, qtyPart);
-          const remainingGlassNeed = qtyPart - deductFromGlassStrip;
-          if (deductFromGlassStrip > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃條', quantity: -deductFromGlassStrip, note: `快速任務扣料:玻璃條` });
-          if (remainingGlassNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃', quantity: -remainingGlassNeed, note: `快速任務扣料:玻璃` });
-        } 
-        else if (formData.specification === '玻璃條') {
-          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃', quantity: -qtyPart, note: `快速任務扣料:玻璃` });
+          const d1 = Math.min(stockFrameFinished, qtyPart);
+          const r1 = qtyPart - d1;
+          if (d1 > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_完成', quantity: -d1, note: `扣料:框_完成` });
+          if (r1 > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框', quantity: -r1, note: `扣料:框` });
         }
       }
 
       await onSubmit(recordsToSubmit);
       removeQuickTask(index);
-      alert(`快速入庫成功：${namePart} (${qtyPart})`);
+      alert(`已雲端完成：${namePart}`);
     } catch (err) {
-      alert('快速任務執行失敗：' + err);
+      alert('任務執行失敗：' + err);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleAiSuggest = async () => {
-    if (!formData.name) return;
-    setAiLoading(true);
-    const suggestion = await suggestPartDescription(formData.category, formData.name);
-    setAiSuggestion(suggestion || '');
-    setAiLoading(false);
   };
 
   const enterBatchEdit = () => {
@@ -245,7 +221,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
         const newValue = Number(newValueStr);
         const oldValue = fullStockSummary[spec][model];
         const delta = newValue - oldValue;
-
         if (delta !== 0) {
           recordsToSubmit.push({
             id: generateReadableId(PartCategory.GlassSlidingDoor),
@@ -260,91 +235,41 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
       });
     });
 
-    if (recordsToSubmit.length === 0) {
-      setIsBatchEditing(false);
-      return;
-    }
+    if (recordsToSubmit.length === 0) { setIsBatchEditing(false); return; }
 
     setLoading(true);
     try {
       await onSubmit(recordsToSubmit);
-      alert(`已成功儲存 ${recordsToSubmit.length} 項庫存異動！`);
+      alert(`成功儲存 ${recordsToSubmit.length} 項！`);
       setIsBatchEditing(false);
       setShowStockOverlay(false);
-    } catch (err) {
-      alert('批次調整失敗：' + err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { alert('失敗：' + err); } 
+    finally { setLoading(false); }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numQty = Number(formData.quantity);
-    if (isNaN(numQty) || numQty === 0) {
-      alert('請輸入有效的數量（非零數字）');
-      return;
-    }
+    if (isNaN(numQty) || numQty === 0) { alert('輸入有效數量'); return; }
 
     setLoading(true);
     try {
       const recordsToSubmit: PartRecord[] = [];
       const timestamp = new Date().toLocaleString('zh-TW');
-
       const mainRecord: PartRecord = {
         ...formData,
         quantity: numQty,
         id: generateReadableId(formData.category),
         timestamp,
-        note: isAdjustmentMode ? `[手動調整] ${formData.note}`.trim() : formData.note
+        note: isAdjustmentMode ? `[手動] ${formData.note}` : formData.note
       };
       recordsToSubmit.push(mainRecord);
-
-      if (!isAdjustmentMode && isGlassDoor && numQty > 0) {
-        const N = numQty;
-        if (formData.specification === '完成') {
-          const stockFrameFinished = getCurrentStock('框_完成', formData.name);
-          const deductFromFrameFinished = Math.min(stockFrameFinished, N);
-          const remainingFrameNeed = N - deductFromFrameFinished;
-          if (deductFromFrameFinished > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框_完成', quantity: -deductFromFrameFinished, note: `成品扣料:框_完成` });
-          if (remainingFrameNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框', quantity: -remainingFrameNeed, note: `成品扣料:框(備援)` });
-        } 
-        else if (formData.specification === '框_完成') {
-          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框', quantity: -N, note: `組裝扣料:框` });
-        } 
-        else if (formData.specification === '框') {
-          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: formData.name, specification: '框_未噴', quantity: -N, note: `噴漆扣料:框_未噴` });
-        }
-
-        const mergedBaseName = getMergedBaseName(formData.name);
-        if (formData.specification === '完成') {
-          const stockGlassStrip = getCurrentStock('玻璃條', mergedBaseName);
-          const deductFromGlassStrip = Math.min(stockGlassStrip, N);
-          const remainingGlassNeed = N - deductFromGlassStrip;
-          if (deductFromGlassStrip > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃條', quantity: -deductFromGlassStrip, note: `成品扣料:玻璃條` });
-          if (remainingGlassNeed > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃', quantity: -remainingGlassNeed, note: `成品扣料:玻璃(備援)` });
-        } 
-        else if (formData.specification === '玻璃條') {
-          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: mergedBaseName, specification: '玻璃', quantity: -N, note: `組裝扣料:玻璃` });
-        }
-      }
-
       await onSubmit(recordsToSubmit);
-      setFormData({
-        category: preselectedCategory,
-        name: availableModels.length > 0 ? availableModels[0] : '',
-        specification: isGlassDoor ? formData.specification : '',
-        quantity: '0',
-        note: ''
-      });
+      setFormData({ ...formData, quantity: '0', note: '' });
       setIsAdjustmentMode(false);
-      setAiSuggestion('');
-      alert(isAdjustmentMode ? '手動庫存調整已完成' : '紀錄已儲存！');
-    } catch (err) {
-      alert('存檔失敗：' + err);
-    } finally {
-      setLoading(false);
-    }
+      alert('紀錄已儲存！');
+    } catch (err) { alert('失敗：' + err); } 
+    finally { setLoading(false); }
   };
 
   const displayQty = Number(formData.quantity);
@@ -357,17 +282,9 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
             <h2 className="text-2xl font-bold">
               {formData.category} - {isAdjustmentMode ? '🛠️ 手動庫存調整' : (displayQty < 0 ? '手動庫存修正' : '入庫登記')}
             </h2>
-            <p className={`${isAdjustmentMode ? 'text-amber-400/80' : 'text-zinc-500'} mt-1 text-sm font-medium`}>
-              {isAdjustmentMode ? '⚠️ 此模式下紀錄將標記為手動調整' : `正在${displayQty < 0 ? '修正' : '新增'}一筆項目`}
-            </p>
           </div>
-          <span className={`text-4xl transition-all ${isAdjustmentMode ? 'opacity-100 scale-110 drop-shadow-[0_0_15px_rgba(245,158,11,0.6)]' : 'opacity-50'}`}>
-            {isAdjustmentMode ? '🛠️' : (
-              formData.category === PartCategory.GlassSlidingDoor ? '🪟' :
-              formData.category === PartCategory.IronSlidingDoor ? '🏗️' :
-              formData.category === PartCategory.Drawer ? '📥' :
-              formData.category === PartCategory.CabinetBody ? '📦' : '🎨'
-            )}
+          <span className="text-4xl">
+            {isAdjustmentMode ? '🛠️' : (formData.category === PartCategory.GlassSlidingDoor ? '🪟' : '🏗️')}
           </span>
         </div>
 
@@ -376,167 +293,76 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
             {isGlassDoor ? (
               <>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">零件組別</label>
+                  <label className="text-sm font-bold text-zinc-400 uppercase">零件組別</label>
                   <div className="grid grid-cols-2 gap-2">
                     {GLASS_DOOR_GROUPS.map(group => (
-                      <button
-                        key={group}
-                        type="button"
-                        onClick={() => setFormData({...formData, specification: group})}
-                        className={`py-3 rounded-xl border font-bold transition-all ${
-                          formData.specification === group 
-                            ? (isAdjustmentMode ? 'bg-amber-600 border-amber-500 text-white shadow-lg shadow-amber-900/40' : 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/40')
-                            : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700'
-                        }`}
-                      >
+                      <button key={group} type="button" onClick={() => setFormData({...formData, specification: group})} className={`py-3 rounded-xl border font-bold transition-all ${formData.specification === group ? 'bg-blue-600 border-blue-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700'}`}>
                         {group}
                       </button>
                     ))}
                   </div>
                 </div>
                 <div className="space-y-2 flex flex-col">
-                  <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">零件型號</label>
-                  <select
-                    className={`w-full px-4 py-3 rounded-xl border focus:ring-2 outline-none bg-zinc-800 text-white transition-all h-[58px] ${isAdjustmentMode ? 'border-amber-700 focus:ring-amber-500' : 'border-zinc-700 focus:ring-blue-500'}`}
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  >
+                  <label className="text-sm font-bold text-zinc-400 uppercase">零件型號</label>
+                  <select className="w-full px-4 py-3 rounded-xl border bg-zinc-800 text-white h-[58px]" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}>
                     {availableModels.map(model => (
                       <option key={model} value={model}>{model}</option>
                     ))}
                   </select>
-                  
-                  <div className="mt-3 space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowStockOverlay(!showStockOverlay)}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-zinc-800/50 border border-zinc-700/50 text-xl font-bold text-blue-400 hover:bg-zinc-700/50 transition-all active:scale-95"
-                    >
-                      📊 庫存 
-                    </button>
-                    
-                    <button
-                      type="button"
-                      onClick={() => setIsAdjustmentMode(!isAdjustmentMode)}
-                      className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl  border font-bold text-xl transition-all active:scale-95 ${
-                        isAdjustmentMode 
-                        ? 'bg-amber-600/20 border-amber-500 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.1)]' 
-                        : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      {isAdjustmentMode ? '🛠️ 手動調整模式：開啟中' : '🛠️ 調整存貨'}
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setShowStockOverlay(true)} className="py-2.5 rounded-xl bg-zinc-800/50 border border-zinc-700/50 text-xl font-bold text-blue-400">📊 庫存</button>
+                    <button type="button" onClick={() => setIsAdjustmentMode(!isAdjustmentMode)} className={`py-2.5 rounded-xl border font-bold text-xs ${isAdjustmentMode ? 'bg-amber-600/20 border-amber-500 text-amber-400' : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400'}`}>
+                      {isAdjustmentMode ? '🛠️ 調整中' : '🛠️ 手動調整'}
                     </button>
                   </div>
                 </div>
               </>
             ) : (
-              <>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">零件名稱</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      required
-                      className={`flex-1 px-4 py-3 rounded-xl border focus:ring-2 outline-none bg-zinc-800 text-white placeholder-zinc-600 transition-all ${isAdjustmentMode ? 'border-amber-700 focus:ring-amber-500' : 'border-zinc-700 focus:ring-blue-500'}`}
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    />
-                    <button type="button" onClick={handleAiSuggest} disabled={aiLoading} className="px-4 py-3 bg-blue-900/30 text-blue-400 border border-blue-800/50 rounded-xl font-bold hover:bg-blue-900/50 whitespace-nowrap">✨ AI</button>
-                  </div>
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <div className="space-y-2">
+                  <label className="text-sm font-bold text-zinc-400 uppercase">零件名稱</label>
+                  <input type="text" required className="w-full px-4 py-3 rounded-xl border bg-zinc-800 text-white" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">規格說明</label>
-                  <input
-                    type="text"
-                    className={`w-full px-4 py-3 rounded-xl border focus:ring-2 outline-none bg-zinc-800 text-white placeholder-zinc-600 transition-all ${isAdjustmentMode ? 'border-amber-700 focus:ring-amber-500' : 'border-zinc-700 focus:ring-blue-500'}`}
-                    value={formData.specification}
-                    onChange={(e) => setFormData({ ...formData, specification: e.target.value })}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setIsAdjustmentMode(!isAdjustmentMode)}
-                    className={`mt-2 w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl border font-bold text-[10px] transition-all ${isAdjustmentMode ? 'bg-amber-600/20 border-amber-500 text-amber-400' : 'bg-zinc-800/30 border-zinc-700/50 text-zinc-500'}`}
-                  >
-                    {isAdjustmentMode ? '🛠️ 調整模式：開啟' : '🛠️ 切換手動調整存貨'}
-                  </button>
+                  <label className="text-sm font-bold text-zinc-400 uppercase">規格說明</label>
+                  <input type="text" className="w-full px-4 py-3 rounded-xl border bg-zinc-800 text-white" value={formData.specification} onChange={(e) => setFormData({ ...formData, specification: e.target.value })} />
                 </div>
-              </>
+              </div>
             )}
 
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">
-                數量 {isAdjustmentMode ? <span className="text-amber-400 text-xs ml-2">(調整模式)</span> : (displayQty < 0 && <span className="text-red-400 text-xs ml-2">(修正模式)</span>)}
-              </label>
-              <input
-                ref={qtyInputRef}
-                type="text"
-                inputMode="numeric"
-                required
-                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 outline-none transition-all font-mono text-xl ${
-                  isAdjustmentMode ? 'border-amber-700 bg-amber-900/10 text-amber-100 focus:ring-amber-500 ring-1 ring-amber-500/30' : 
-                  (displayQty < 0 ? 'border-red-900/50 bg-red-900/10 text-red-200' : 'border-zinc-700 bg-zinc-800 text-white focus:ring-blue-500')
-                }`}
-                value={formData.quantity}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === '' || val === '-' || !isNaN(Number(val))) {
-                    setFormData({ ...formData, quantity: val });
-                  }
-                }}
-              />
-              <button
-              type="submit"
-              disabled={loading}
-              className={`w-full py-4 rounded-xl font-bold text-lg shadow-xl transition-all ${isAdjustmentMode ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20' : (displayQty < 0 ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20')} text-white`}
-              >
-              {loading ? '處理中...' : (isAdjustmentMode ? '確認手動調整' : '確認提交紀錄')}
+              <label className="text-sm font-bold text-zinc-400 uppercase">數量</label>
+              <input type="text" inputMode="numeric" required className="w-full px-4 py-3 rounded-xl border bg-zinc-800 text-white font-mono text-xl" value={formData.quantity} onChange={(e) => { const val = e.target.value; if (val===''||val==='-'||!isNaN(Number(val))) setFormData({...formData, quantity:val}); }} />
+              <button type="submit" disabled={loading} className={`w-full py-4 rounded-xl font-bold text-lg text-white shadow-xl ${isAdjustmentMode ? 'bg-amber-600' : 'bg-blue-600'}`}>
+                {loading ? '處理中...' : (isAdjustmentMode ? '確認手動調整' : '確認提交紀錄')}
               </button>
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-bold text-zinc-400 uppercase tracking-wider">備註 / 待辦 (輸入「名稱*數量」後按➕)</label>
+              <label className="text-sm font-bold text-zinc-400 uppercase flex items-center gap-2">
+                <span>📝 雲端待辦清單</span>
+                <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">所有電腦同步</span>
+              </label>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  className={`flex-1 px-4 py-3 rounded-xl border focus:ring-2 outline-none bg-zinc-800 text-white text-xl placeholder-zinc-600 transition-all ${isAdjustmentMode ? 'border-amber-700 focus:ring-amber-500' : 'border-zinc-700 focus:ring-blue-500'}`}
+                  className="flex-1 px-4 py-3 rounded-xl border border-zinc-700 bg-zinc-800 text-white text-xl placeholder-zinc-600"
                   value={formData.note}
                   onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addQuickTask(); } }}
                   placeholder="例如: AS3B*120"
                 />
-                <button
-                  type="button"
-                  onClick={addQuickTask}
-                  className="px-6 bg-zinc-800 text-blue-400 border border-zinc-700 rounded-xl hover:bg-zinc-700 active:scale-95 transition-all font-bold"
-                >
-                  ➕
-                </button>
+                <button type="button" onClick={addQuickTask} className="px-6 bg-zinc-800 text-blue-400 border border-zinc-700 rounded-xl font-bold">➕</button>
               </div>
 
-              {isGlassDoor && quickTasks.length > 0 && (
+              {quickTasks.length > 0 && (
                 <div className="mt-4 p-4 bg-black/40 rounded-2xl border border-zinc-800 space-y-3">
-                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">📝 待執行任務 ({formData.specification})</p>
                   <div className="flex flex-wrap gap-2">
                     {quickTasks.map((task, idx) => (
-                      <div key={idx} className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-lg pl-3 pr-1 py-1 group animate-in zoom-in-95 duration-200">
+                      <div key={idx} className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-lg pl-3 pr-1 py-1 group">
                         <span className="text-xl font-mono text-white mr-2">{task}</span>
-                        <button
-                          type="button"
-                          onClick={() => completeQuickTask(task, idx)}
-                          disabled={loading}
-                          className="p-1.5 text-green-500 hover:bg-green-500/20 rounded-md transition-colors"
-                          title="標記完成入庫"
-                        >
-                          ✅
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeQuickTask(idx)}
-                          className="p-1.5 text-red-400 hover:bg-red-400/20 rounded-md transition-colors"
-                          title="刪除"
-                        >
-                          🗑️
-                        </button>
+                        <button type="button" onClick={() => completeQuickTask(task, idx)} disabled={loading} className="p-1.5 text-green-500 hover:bg-green-500/20 rounded-md">✅</button>
+                        <button type="button" onClick={() => removeQuickTask(idx)} className="p-1.5 text-red-400 hover:bg-red-400/20 rounded-md">🗑️</button>
                       </div>
                     ))}
                   </div>
@@ -547,79 +373,32 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, preselectedCate
         </form>
       </div>
 
-      {showStockOverlay && isGlassDoor && (
-        <div className="absolute inset-x-0 bottom-0 top-[88px] bg-black/95 backdrop-blur-md z-20 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300 rounded-b-3xl border-t border-zinc-800 shadow-2xl">
-          <div className="p-6 border-b border-zinc-800 flex justify-between items-center sticky top-0 bg-black/60 backdrop-blur-md z-30">
-            <h4 className="font-bold text-white flex items-center gap-2 text-lg">
-              <span className="text-blue-400">📊</span> 玻璃門庫存
-            </h4>
-            
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={isBatchEditing ? saveBatchAdjustments : enterBatchEdit}
-                disabled={loading}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 ${
-                  isBatchEditing 
-                    ? 'bg-green-600 text-white shadow-lg shadow-green-900/20' 
-                    : 'bg-amber-600/20 border border-amber-500/50 text-amber-500 hover:bg-amber-600 hover:text-white'
-                }`}
-              >
-                {loading ? '儲存中...' : (isBatchEditing ? '💾 儲存所有調整項目' : '🛠️ 調整庫存')}
+      {showStockOverlay && (
+        <div className="absolute inset-x-0 bottom-0 top-[88px] bg-black/95 backdrop-blur-md z-20 flex flex-col rounded-b-3xl border-t border-zinc-800 shadow-2xl overflow-hidden">
+          <div className="p-6 border-b border-zinc-800 flex justify-between items-center">
+            {/* 更新為 📚 玻璃門庫存 */}
+            <h4 className="font-bold text-white flex items-center gap-2">📚 玻璃門庫存</h4>
+            <div className="flex gap-2">
+               {/* 按鈕微調為 🛠️ 調整庫存 */}
+               <button onClick={isBatchEditing ? saveBatchAdjustments : enterBatchEdit} className={`px-4 py-2 rounded-xl font-bold text-sm ${isBatchEditing ? 'bg-green-600 text-white' : 'bg-amber-600/20 text-amber-500'}`}>
+                {isBatchEditing ? '💾 儲存調整' : '🛠️ 調整庫存'}
               </button>
-              <button 
-                onClick={() => { setShowStockOverlay(false); setIsBatchEditing(false); }}
-                className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400 transition-colors"
-              >
-                ✖️
-              </button>
+              <button onClick={() => setShowStockOverlay(false)} className="p-2 text-zinc-400">✖️</button>
             </div>
           </div>
-
           <div className="flex-1 overflow-y-auto p-4 space-y-8 pb-10">
             {DISPLAY_ORDER.map(spec => (
               <section key={spec} className="space-y-4">
-                <div className="flex items-center gap-4 sticky top-0 bg-zinc-950/80 backdrop-blur-sm py-2 z-10">
-                  <h5 className="text-blue-400 font-black text-sm uppercase tracking-widest px-3 py-1 bg-blue-900/20 rounded-lg border border-blue-800/30">
-                    {spec}
-                  </h5>
-                  <div className="h-px flex-1 bg-zinc-800"></div>
-                </div>
-                
-                {/* --- 調整區：手機版雙欄佈局 (grid-cols-2) --- */}
-                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                <h5 className="text-blue-400 font-black text-sm uppercase tracking-widest">{spec}</h5>
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
                   {Object.entries(fullStockSummary[spec] || {}).map(([model, qty]) => (
-                    <div 
-                      key={model} 
-                      className={`group flex items-center gap-1.5 p-2 rounded-xl border transition-all ${
-                        isBatchEditing ? 'border-amber-500/30 bg-amber-900/5' : ((qty as number) > 0 ? 'bg-zinc-800/80 border-zinc-700 shadow-sm' : 'bg-zinc-900/30 border-zinc-800/50')
-                      }`}
-                    >
-                      {/* --- 調整區：型號字體顏色與大小 (text-xl, text-white) --- */}
-                      <span className="text-xl font-bold text-white truncate flex-1 min-w-0">{model}</span>
-                      
-                      <div className="flex items-center">
-                        {isBatchEditing ? (
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            className="w-14 px-1 py-1 bg-zinc-900 border border-amber-500/50 rounded-md text-sm text-amber-400 text-center focus:ring-1 focus:ring-amber-500 outline-none font-bold"
-                            value={batchValues[spec]?.[model] || '0'}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === '' || val === '-' || !isNaN(Number(val))) {
-                                setBatchValues({ ...batchValues, [spec]: { ...batchValues[spec], [model]: val } });
-                              }
-                            }}
-                          />
-                        ) : (
-                          /* --- 調整區：數量緊貼名稱後的樣式 (text-base) --- */
-                          <span className={`text-base font-black px-1.5 py-0.5 rounded-lg text-center ${
-                            (qty as number) > 0 ? 'bg-blue-600/20 text-blue-400' : 'bg-zinc-800 text-zinc-600'
-                          }`}>
-                            {qty as React.ReactNode}
-                          </span>
-                        )}
-                      </div>
+                    <div key={model} className="flex items-center gap-1.5 p-2 rounded-xl border bg-zinc-800/80 border-zinc-700">
+                      <span className="text-xl font-bold text-white truncate flex-1">{model}</span>
+                      {isBatchEditing ? (
+                        <input type="text" className="w-14 px-1 py-1 bg-zinc-900 border border-amber-500/50 rounded text-amber-400 text-center font-bold" value={batchValues[spec]?.[model] || '0'} onChange={(e) => setBatchValues({...batchValues, [spec]: {...batchValues[spec], [model]: e.target.value}})} />
+                      ) : (
+                        <span className={`text-base font-black px-1.5 py-0.5 rounded-lg ${qty > 0 ? 'text-blue-400 bg-blue-600/10' : 'text-zinc-600 bg-zinc-900'}`}>{qty}</span>
+                      )}
                     </div>
                   ))}
                 </div>
