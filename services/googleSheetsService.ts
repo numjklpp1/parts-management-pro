@@ -1,8 +1,9 @@
 
-import { PartRecord, PartCategory } from '../types';
+import { PartRecord } from '../types';
 
-// 改為呼叫內部的 API Proxy，由後端處理 Service Account 認證
 const PROXY_API_ENDPOINT = '/api/inventory';
+const LOCAL_RECORDS_KEY = 'local_inventory_records';
+const LOCAL_TASKS_KEY = 'local_inventory_tasks';
 
 export class GoogleSheetsService {
   private spreadsheetId: string;
@@ -11,26 +12,37 @@ export class GoogleSheetsService {
     this.spreadsheetId = spreadsheetId;
   }
 
+  private isLocalMode(): boolean {
+    return !this.spreadsheetId || this.spreadsheetId.trim() === '';
+  }
+
   /**
-   * 初始化試算表（透過 Proxy）
+   * 初始化試算表
    */
   async initializeSheet(): Promise<void> {
+    if (this.isLocalMode()) return;
     try {
-      const response = await fetch(`${PROXY_API_ENDPOINT}?action=initialize`, {
+      await fetch(`${PROXY_API_ENDPOINT}?action=initialize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spreadsheetId: this.spreadsheetId }),
       });
-      if (!response.ok) throw new Error('Initialization failed');
     } catch (error) {
-      console.error('Failed to initialize sheet via proxy:', error);
+      console.warn('Cloud sync unavailable, using local mode');
     }
   }
 
   /**
-   * 新增紀錄（透過 Proxy）
+   * 新增紀錄
    */
   async addRecord(record: PartRecord): Promise<void> {
+    if (this.isLocalMode()) {
+      const records = await this.fetchRecords();
+      records.push(record);
+      localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
+      return;
+    }
+
     const response = await fetch(PROXY_API_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -47,24 +59,29 @@ export class GoogleSheetsService {
   }
 
   /**
-   * 抓取所有紀錄（透過 Proxy）
+   * 抓取所有紀錄
    */
   async fetchRecords(): Promise<PartRecord[]> {
-    const response = await fetch(`${PROXY_API_ENDPOINT}?spreadsheetId=${this.spreadsheetId}`);
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || '無法從雲端獲取資料');
+    if (this.isLocalMode()) {
+      const stored = localStorage.getItem(LOCAL_RECORDS_KEY);
+      return stored ? JSON.parse(stored) : [];
     }
 
+    const response = await fetch(`${PROXY_API_ENDPOINT}?spreadsheetId=${this.spreadsheetId}`);
+    if (!response.ok) throw new Error('無法從雲端獲取資料');
     const data = await response.json();
     return data.records || [];
   }
 
   /**
-   * 雲端同步：抓取待辦任務
+   * 抓取待辦任務
    */
   async fetchTasks(): Promise<string[]> {
+    if (this.isLocalMode()) {
+      const stored = localStorage.getItem(LOCAL_TASKS_KEY);
+      return stored ? JSON.parse(stored) : [];
+    }
+
     const response = await fetch(`${PROXY_API_ENDPOINT}?spreadsheetId=${this.spreadsheetId}&type=tasks`);
     if (!response.ok) return [];
     const data = await response.json();
@@ -72,10 +89,15 @@ export class GoogleSheetsService {
   }
 
   /**
-   * 雲端同步：儲存待辦任務
+   * 儲存待辦任務
    */
   async updateTasks(tasks: string[]): Promise<void> {
-    const response = await fetch(`${PROXY_API_ENDPOINT}?type=tasks`, {
+    if (this.isLocalMode()) {
+      localStorage.setItem(LOCAL_TASKS_KEY, JSON.stringify(tasks));
+      return;
+    }
+
+    await fetch(`${PROXY_API_ENDPOINT}?type=tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -83,6 +105,5 @@ export class GoogleSheetsService {
         tasks: tasks
       }),
     });
-    if (!response.ok) throw new Error('同步任務失敗');
   }
 }
