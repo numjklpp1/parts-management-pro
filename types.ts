@@ -1,4 +1,3 @@
-
 export enum PartCategory {
   GlassSlidingDoor = '玻璃拉門',
   IronSlidingDoor = '鐵拉門',
@@ -6,6 +5,8 @@ export enum PartCategory {
   CabinetBody = '桶身',
   Paint = '噴漆'
 }
+
+export type Language = 'zh-TW' | 'vi' | 'id';
 
 export interface PartRecord {
   id: string;

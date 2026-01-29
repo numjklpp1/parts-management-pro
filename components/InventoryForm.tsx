@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { PartCategory, PartRecord } from '../types';
+import { PartCategory, PartRecord, Language } from '../types';
 import GlassSlidingDoorForm from './forms/GlassSlidingDoorForm';
 import StandardPartForm from './forms/StandardPartForm';
 
@@ -10,6 +9,7 @@ interface InventoryFormProps {
   allRecords: PartRecord[];
   quickTasks: string[];
   onUpdateQuickTasks: (tasks: string[]) => Promise<void>;
+  language: Language;
 }
 
 const InventoryForm: React.FC<InventoryFormProps> = ({ 
@@ -17,9 +17,9 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
   preselectedCategory, 
   allRecords,
   quickTasks = [],
-  onUpdateQuickTasks
+  onUpdateQuickTasks,
+  language
 }) => {
-  // 根據類別分發到不同的模組
   switch (preselectedCategory) {
     case PartCategory.GlassSlidingDoor:
       return (
@@ -28,6 +28,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
           allRecords={allRecords}
           quickTasks={quickTasks}
           onUpdateQuickTasks={onUpdateQuickTasks}
+          language={language}
         />
       );
       
@@ -44,11 +45,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
       return <StandardPartForm category={preselectedCategory} icon="🎨" onSubmit={async (r) => onSubmit(r)} />;
 
     default:
-      return (
-        <div className="p-8 text-center text-zinc-500">
-          未知的分類模組
-        </div>
-      );
+      return <div className="p-8 text-center text-zinc-500">Unknown Module</div>;
   }
 };
 
