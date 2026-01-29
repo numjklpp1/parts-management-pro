@@ -26,7 +26,6 @@ const App: React.FC = () => {
     try {
       const sheetsService = new GoogleSheetsService(spreadsheetId);
       
-      // 平行載入紀錄與任務
       const [data, tasks] = await Promise.all([
         sheetsService.fetchRecords(),
         sheetsService.fetchTasks()
@@ -163,7 +162,7 @@ const App: React.FC = () => {
           )}
           {currentView === 'list' && <InventoryList records={records} />}
           {currentView === 'settings' && (
-            <div className="max-w-2xl mx-auto space-y-6">
+            <div className="max-w-2xl mx-auto space-y-12">
               <div className="bg-zinc-900 p-8 rounded-3xl shadow-sm border border-zinc-800">
                 <h3 className="text-xl font-bold mb-6 text-white flex items-center gap-2">☁️ 同步設定</h3>
                 <div className="space-y-2">
@@ -175,8 +174,8 @@ const App: React.FC = () => {
                     onChange={(e) => setSpreadsheetId(e.target.value)}
                   />
                 </div>
+                <button onClick={() => { localStorage.setItem('sheet_id', spreadsheetId); alert('設定已儲存！'); loadData(); }} className="w-full mt-6 py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-500 transition-all">儲存並同步</button>
               </div>
-              <button onClick={() => { localStorage.setItem('sheet_id', spreadsheetId); alert('設定已儲存！'); loadData(); }} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-500 transition-all">儲存並同步</button>
             </div>
           )}
         </div>

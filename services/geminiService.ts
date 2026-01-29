@@ -1,15 +1,11 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { PartCategory } from '../types';
 
+/**
+ * Suggests a part description using gemini-3-flash-preview.
+ */
 export async function suggestPartDescription(category: PartCategory, name: string) {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    console.warn("Gemini API Key is missing. Please set process.env.API_KEY.");
-    return "尚未設定 AI 金鑰，無法提供建議。";
-  }
-
-  // Fix: Strictly following the SDK guideline to initialize with { apiKey: process.env.API_KEY }.
+  // Always initialize GoogleGenAI with { apiKey: process.env.API_KEY }.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
@@ -23,14 +19,11 @@ export async function suggestPartDescription(category: PartCategory, name: strin
   }
 }
 
+/**
+ * Analyzes inventory data using gemini-3-pro-preview for complex reasoning.
+ */
 export async function analyzeInventory(records: any[]) {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    console.warn("Gemini API Key is missing. Skipping analysis.");
-    return "⚠️ AI 分析功能尚未啟用：請在環境變數中設定 API_KEY。";
-  }
-
-  // Fix: Strictly following the SDK guideline to initialize with { apiKey: process.env.API_KEY }.
+  // Always initialize GoogleGenAI with { apiKey: process.env.API_KEY }.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const dataSummary = records.map(r => `${r.category}: ${r.name} (${r.quantity})`).join(', ');

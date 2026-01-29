@@ -1,8 +1,6 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PartCategory, PartRecord } from '../types';
 import { CATEGORIES, GLASS_DOOR_GROUPS, GLASS_DOOR_MODELS } from '../constants';
-import { suggestPartDescription } from '../services/geminiService';
 
 interface InventoryFormProps {
   onSubmit: (records: PartRecord | PartRecord[]) => Promise<void>;
@@ -20,15 +18,12 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
   onUpdateQuickTasks
 }) => {
   const [loading, setLoading] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiSuggestion, setAiSuggestion] = useState('');
   const [showStockOverlay, setShowStockOverlay] = useState(false);
   const [isAdjustmentMode, setIsAdjustmentMode] = useState(false);
   
   const [isBatchEditing, setIsBatchEditing] = useState(false);
   const [batchValues, setBatchValues] = useState<Record<string, Record<string, string>>>({});
 
-  const qtyInputRef = useRef<HTMLInputElement>(null);
   const isGlassDoor = preselectedCategory === PartCategory.GlassSlidingDoor;
 
   const [formData, setFormData] = useState({
@@ -39,7 +34,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
     note: '' as string
   });
 
-  // 更新顯示順序
   const DISPLAY_ORDER = ['完成', '框_噴完', '框_製作完成', '框_待辦', '玻璃條', '玻璃'];
   const BASE_MODEL_SPECS = ['玻璃', '玻璃條']; 
 
@@ -120,18 +114,14 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
     if (isGlassDoor && availableModels.length > 0) {
       const currentName = formData.name;
       if (availableModels.includes(currentName)) return;
-
       let bestMatch = '';
-      const isNewSpecBase = BASE_MODEL_SPECS.includes(formData.specification);
-      
-      if (isNewSpecBase) {
+      if (BASE_MODEL_SPECS.includes(formData.specification)) {
         const mergedBase = getMergedBaseName(currentName);
         if (availableModels.includes(mergedBase)) bestMatch = mergedBase;
       } else {
         const prefixMatch = availableModels.find(m => m.startsWith(currentName.split('/')[0]));
         if (prefixMatch) bestMatch = prefixMatch;
       }
-
       if (bestMatch) setFormData(prev => ({ ...prev, name: bestMatch }));
       else setFormData(prev => ({ ...prev, name: availableModels[0] }));
     }
@@ -157,10 +147,20 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
     }
 
     const namePart = parts[0].trim();
-    const qtyPart = parseInt(parts[1].trim());
+    const totalQty = parseInt(parts[1].trim());
 
-    if (isNaN(qtyPart)) {
+    if (isNaN(totalQty)) {
       alert('數量格式錯誤');
+      return;
+    }
+
+    // 支援部分完成的彈窗詢問
+    const inputDoneStr = prompt(`【${namePart}】總量 ${totalQty}\n本次完成數量？`, totalQty.toString());
+    if (inputDoneStr === null) return; // 使用者取消
+
+    const doneQty = parseInt(inputDoneStr);
+    if (isNaN(doneQty) || doneQty <= 0) {
+      alert('請輸入正確的完成數量');
       return;
     }
 
@@ -169,35 +169,48 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
       const timestamp = new Date().toLocaleString('zh-TW');
       const recordsToSubmit: PartRecord[] = [];
 
+      // 以「實際完成量」產生入庫紀錄
       const mainRecord: PartRecord = {
         category: formData.category,
         name: namePart,
         specification: formData.specification,
-        quantity: qtyPart,
+        quantity: doneQty,
         id: generateReadableId(formData.category),
         timestamp,
-        note: `[快速雲端任務] ${task}`
+        note: `[快速雲端任務] 完工:${doneQty} (總量:${totalQty})`
       };
       recordsToSubmit.push(mainRecord);
 
-      // 自動扣料邏輯：根據新的生產流程順序連鎖扣料
+      // 自動扣料邏輯（使用實際完工量 doneQty）
       if (isGlassDoor) {
         if (formData.specification === '完成') {
           const stockA = getCurrentStock('框_噴完', namePart);
-          const d1 = Math.min(stockA, qtyPart);
-          const r1 = qtyPart - d1;
+          const d1 = Math.min(stockA, doneQty);
+          const r1 = doneQty - d1;
           if (d1 > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_噴完', quantity: -d1, note: `自動扣料:框_噴完` });
           if (r1 > 0) recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_製作完成', quantity: -r1, note: `自動扣料:框_製作完成` });
         } else if (formData.specification === '框_噴完') {
-          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_製作完成', quantity: -qtyPart, note: `自動扣料:框_製作完成` });
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_製作完成', quantity: -doneQty, note: `自動扣料:框_製作完成` });
         } else if (formData.specification === '框_製作完成') {
-          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_待辦', quantity: -qtyPart, note: `自動扣料:框_待辦` });
+          recordsToSubmit.push({ id: generateReadableId(PartCategory.GlassSlidingDoor), timestamp, category: PartCategory.GlassSlidingDoor, name: namePart, specification: '框_待辦', quantity: -doneQty, note: `自動扣料:框_待辦` });
         }
       }
 
       await onSubmit(recordsToSubmit);
-      removeQuickTask(index);
-      alert(`已雲端完成：${namePart}`);
+
+      // 更新雲端待辦清單
+      const remaining = totalQty - doneQty;
+      let newTasks = [...quickTasks];
+      if (remaining > 0) {
+        // 如果還有剩，更新該筆文字
+        newTasks[index] = `${namePart}*${remaining}`;
+        onUpdateQuickTasks(newTasks);
+        alert(`已紀錄完成 ${doneQty}，剩餘 ${remaining} 已更新至清單。`);
+      } else {
+        // 如果全做完了或超過了，直接移除
+        removeQuickTask(index);
+        alert(`任務「${namePart}」已全數完成！`);
+      }
     } catch (err) {
       alert('任務執行失敗：' + err);
     } finally {
@@ -270,7 +283,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
       };
       recordsToSubmit.push(mainRecord);
       
-      // 手動入庫時的扣料邏輯同步更新
       if (!isAdjustmentMode && isGlassDoor) {
         if (formData.specification === '完成') {
           const stockA = getCurrentStock('框_噴完', formData.name);
@@ -380,10 +392,10 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
                 <div className="mt-4 p-4 bg-black/40 rounded-2xl border border-zinc-800 space-y-3">
                   <div className="flex flex-wrap gap-2">
                     {quickTasks.map((task, idx) => (
-                      <div key={idx} className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-lg pl-3 pr-1 py-1 group">
+                      <div key={idx} className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-lg pl-3 pr-1 py-1 group shadow-sm">
                         <span className="text-xl font-mono text-white mr-2">{task}</span>
-                        <button type="button" onClick={() => completeQuickTask(task, idx)} disabled={loading} className="p-1.5 text-green-500 hover:bg-green-500/20 rounded-md">✅</button>
-                        <button type="button" onClick={() => removeQuickTask(idx)} className="p-1.5 text-red-400 hover:bg-red-400/20 rounded-md">🗑️</button>
+                        <button type="button" onClick={() => completeQuickTask(task, idx)} disabled={loading} className="p-1.5 text-green-500 hover:bg-green-500/20 rounded-md transition-colors" title="標記完成">✅</button>
+                        <button type="button" onClick={() => removeQuickTask(idx)} className="p-1.5 text-red-400 hover:bg-red-400/20 rounded-md transition-colors" title="刪除">🗑️</button>
                       </div>
                     ))}
                   </div>
@@ -416,7 +428,8 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
                       {isBatchEditing ? (
                         <input type="text" className="w-14 px-1 py-1 bg-zinc-900 border border-amber-500/50 rounded text-amber-400 text-center font-bold" value={batchValues[spec]?.[model] || '0'} onChange={(e) => setBatchValues({...batchValues, [spec]: {...batchValues[spec], [model]: e.target.value}})} />
                       ) : (
-                        <span className={`text-base font-black px-1.5 py-0.5 rounded-lg ${qty > 0 ? 'text-blue-400 bg-blue-600/10' : 'text-zinc-600 bg-zinc-900'}`}>{qty}</span>
+                        // Fix: Explicitly cast qty to number to resolve TypeScript operator > error.
+                        <span className={`text-base font-black px-1.5 py-0.5 rounded-lg ${Number(qty) > 0 ? 'text-blue-400 bg-blue-600/10' : 'text-zinc-600 bg-zinc-900'}`}>{qty as React.ReactNode}</span>
                       )}
                     </div>
                   ))}
