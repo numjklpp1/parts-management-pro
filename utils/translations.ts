@@ -45,7 +45,15 @@ export const translations: Record<Language, Record<string, string>> = {
     'item_note': '項目名稱與備註',
     'change_qty': '異動量',
     'no_data': '查無庫存資料',
-    'ai_analysis': 'AI 智慧分析建議'
+    'ai_analysis': 'AI 智慧分析建議',
+    'click_to_adj': '點擊以進行調整',
+    'edit_mode_toggle': '進入快速修改模式',
+    'exit_edit_mode': '退出修改模式',
+    'save_change': '保存修改',
+    'save_all_changes': '儲存所有變更',
+    'unsaved_changes': '項未儲存',
+    'save_success': '庫存已成功更新',
+    'priority_task': '優先'
   },
   'vi': {
     'system_title': 'Hệ thống quản lý linh kiện',
@@ -91,7 +99,15 @@ export const translations: Record<Language, Record<string, string>> = {
     'item_note': 'Tên sản phẩm và ghi chú',
     'change_qty': 'Số lượng thay đổi',
     'no_data': 'Không có dữ liệu',
-    'ai_analysis': 'Phân tích AI'
+    'ai_analysis': 'Phân tích AI',
+    'click_to_adj': 'Nhấp để điều chỉnh',
+    'edit_mode_toggle': 'Bật chế độ chỉnh sửa nhanh',
+    'exit_edit_mode': 'Thoát chế độ chỉnh sửa',
+    'save_change': 'Lưu thay đổi',
+    'save_all_changes': 'Lưu tất cả thay đổi',
+    'unsaved_changes': 'mục chưa lưu',
+    'save_success': 'Cập nhật thành công',
+    'priority_task': 'Ưu tiên'
   },
   'id': {
     'system_title': 'Sistem Manajemen Suku Cadang',
@@ -137,6 +153,14 @@ export const translations: Record<Language, Record<string, string>> = {
     'item_note': 'Nama Item & Catatan',
     'change_qty': 'Jumlah Ubah',
     'no_data': 'Data tidak ditemukan',
-    'ai_analysis': 'Analisis AI'
+    'ai_analysis': 'Analisis AI',
+    'click_to_adj': 'Klik untuk menyesuaikan',
+    'edit_mode_toggle': 'Mode Edit Cepat',
+    'exit_edit_mode': 'Keluar Mode Edit',
+    'save_change': 'Simpan Perubahan',
+    'save_all_changes': 'Simpan Semua Perubahan',
+    'unsaved_changes': 'item belum disimpan',
+    'save_success': 'Stok berhasil diperbarui',
+    'priority_task': 'Prioritas'
   }
 };
